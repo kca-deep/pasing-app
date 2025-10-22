@@ -102,13 +102,18 @@ async def parse_with_mineru(
 
         # FileBasedDataWriter 생성
         image_writer = FileBasedDataWriter(str(image_dir))
+        md_writer = FileBasedDataWriter(str(output_dir))
 
         # Document 분석
         logger.info("  Step 2/4: Analyzing document...")
+        # formula_enable=False: 수식 인식 비활성화 (transformers 호환성 문제 회피)
+        # layout_model 지정하지 않음: magic-pdf.json의 layout-config 사용
         infer_result = ds.apply(
             doc_analyze,
             ocr=use_ocr,
-            lang=ds._lang
+            lang=ds._lang,
+            formula_enable=False,  # 명시적으로 수식 인식 비활성화
+            layout_model=None  # None = magic-pdf.json 설정 사용
         )
 
         # 파이프라인 실행 (OCR 모드 or TXT 모드)
@@ -128,18 +133,17 @@ async def parse_with_mineru(
 
         # Markdown 생성
         logger.info("  Step 4/4: Generating markdown...")
-        md_content = pipe_result.dump_md(
-            str(image_dir.name),
-            drop_mode=DropMode.NONE,
-            md_make_mode=MakeMode.MM_MD  # Markdown + HTML tables
-        )
+        # dump_md() signature: dump_md(writer, file_path, image_dir)
+        pipe_result.dump_md(md_writer, "content.md", str(image_dir))
 
-        # 리스트인 경우 결합
-        if isinstance(md_content, list):
-            md_content = "\n".join(md_content)
+        # 생성된 마크다운 파일 읽기
+        md_output_path = output_dir / "content.md"
+        md_content = md_output_path.read_text(encoding="utf-8")
 
         # 메타데이터 추출
-        pdf_info = pipe_result.get_content_list()
+        # get_content_list() signature: get_content_list(image_dir_or_bucket_prefix, drop_mode='none')
+        content_list_json = pipe_result.get_content_list(str(image_dir))
+        pdf_info = json.loads(content_list_json) if isinstance(content_list_json, str) else content_list_json
 
         # 메타데이터 계산
         total_tables = len([item for item in pdf_info if item.get("type") == "table"])

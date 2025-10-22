@@ -102,6 +102,9 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
                     "ocr_enabled": mineru_metadata.get("ocr_enabled", False)
                 }
 
+                # MinerU는 자체적으로 표를 처리하므로 별도 table_extractions 불필요
+                table_extractions = []
+
                 docling_doc = None  # MinerU는 docling_doc 불필요
 
             except Exception as e:

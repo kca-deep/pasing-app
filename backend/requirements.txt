@@ -1,33 +1,153 @@
+# FastAPI Web Framework
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
 python-multipart==0.0.12
-python-dotenv>=1.1.0
-pydantic>=2.11.0,<3.0.0
-docling>=2.0.0
+python-dotenv==1.1.1
+pydantic==2.10.6
+pydantic-settings==2.11.0
 
 # Database
 sqlalchemy==2.0.36
 alembic==1.14.0
+
+# HTTP Client
 httpx==0.28.1
-httpx-sse>=0.4
+httpx-sse==0.4.3
+requests==2.32.5
+
+# Progress Bar
 tqdm==4.67.1
 
-# OCR dependencies
-easyocr>=1.7.0
-onnxruntime>=1.16.0  # Required for RapidOCR backend
+# Document Processing - Core
+docling==2.57.0
+docling-core==2.49.0
+docling-ibm-models==3.10.0
+docling-parse==4.7.0
 
-# Table parsing libraries
-pdfplumber>=0.11.0
-camelot-py>=0.11.0
-tabula-py>=2.9.0
-# Note: camelot-py requires opencv-python (already installed by mineru)
+# MinerU - Universal PDF Parser
+mineru==2.5.4
+magic-pdf==1.3.12
+mineru-vl-utils==0.1.14
 
-# MinerU - Universal PDF parser (optional, recommended)
-# Features: 병합 셀, 계층적 표, 텍스트 순서 자동 정렬, 84개 언어 지원
-# Install with: pip install mineru
-mineru>=0.9.0
+# OCR Dependencies
+easyocr==1.7.2
+onnxruntime==1.23.2
+rapidocr==3.4.2
 
-# Picture Description (VLM) dependencies
-# Install these if you want to use Picture Description feature:
-# pip install transformers>=4.30.0 torch>=2.0.0 pillow>=10.0.0
-# Or install with: pip install docling[vlm]
+# Table Parsing Libraries
+pdfplumber==0.11.7
+camelot-py==1.0.9
+tabula-py==2.10.0
+rapid-table==1.0.5
+
+# PDF Processing
+PyMuPDF==1.24.14
+pypdf==5.9.0
+pypdfium2==4.30.0
+pdfminer.six==20250506
+pdftext==0.6.3
+
+# Image Processing
+opencv-python==4.12.0.88
+opencv-python-headless==4.12.0.88
+pillow==11.3.0
+imageio==2.37.0
+scikit-image==0.25.2
+albumentations==2.0.8
+albucore==0.0.24
+
+# Computer Vision & Object Detection
+pycocotools==2.0.10
+ultralytics==8.3.219
+doclayout-yolo==0.0.2b1
+
+# Machine Learning & Deep Learning
+torch==2.9.0
+torchvision==0.24.0
+transformers==4.57.1
+tokenizers==0.22.1
+safetensors==0.6.2
+accelerate==1.11.0
+huggingface-hub==0.35.3
+
+# Scientific Computing
+numpy==2.2.6
+scipy==1.16.2
+pandas==2.3.3
+scikit-learn==1.7.2
+polars==1.34.0
+
+# Data Visualization
+matplotlib==3.10.7
+seaborn==0.13.2
+
+# Office Document Processing
+python-docx==1.2.0
+python-pptx==1.0.2
+openpyxl==3.1.5
+xlsxwriter==3.2.9
+
+# Text Processing
+beautifulsoup4==4.14.2
+lxml==5.4.0
+markdown-it-py==4.0.0
+marko==2.2.1
+ftfy==6.3.1
+python-bidi==0.6.6
+regex==2025.10.23
+
+# JSON & Data Format Processing
+jsonlines==4.0.0
+jsonschema==4.25.1
+json-repair==0.52.3
+PyYAML==6.0.3
+
+# Utilities
+rich==14.2.0
+typer==0.19.2
+click==8.3.0
+coloredlogs==15.0.1
+colorlog==6.10.1
+loguru==0.7.3
+python-dateutil==2.9.0.post0
+pytz==2025.2
+filelock==3.20.0
+psutil==7.1.1
+
+# AWS & Cloud Storage
+boto3==1.40.56
+botocore==1.40.56
+
+# Compression
+Brotli==1.1.0
+
+# Security
+cryptography==46.0.3
+certifi==2025.10.5
+
+# Model & Config Management
+modelscope==1.31.0
+omegaconf==2.3.0
+protobuf==6.33.0
+
+# Math & LaTeX
+latex2mathml==3.78.1
+pylatexenc==2.10
+sympy==1.14.0
+
+# Other Dependencies
+aiofiles==25.1.0
+shellingham==1.5.4
+distro==1.9.0
+charset-normalizer==3.4.4
+idna==3.11
+tabulate==0.9.0
+semchunk==2.2.2
+shapely==2.1.2
+rtree==1.4.1
+Faker==37.11.0
+fast-langdetect==0.2.5
+chardet==5.2.0
+filetype==1.2.0
+flatbuffers==25.9.23
+reportlab==4.4.4
