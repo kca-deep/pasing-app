@@ -83,10 +83,16 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
             strategy = 'MinerU (Universal)'
             logger.info(f"📄 Parsing: {request.filename} | Strategy: {strategy}")
 
+            # Create output directory for this document
+            doc_name = file_path.stem
+            doc_output_dir = OUTPUT_FOLDER / doc_name
+            doc_output_dir.mkdir(parents=True, exist_ok=True)
+
             # MinerU로 파싱 (로컬 라이브러리)
             try:
                 content, mineru_metadata = await parse_with_mineru(
                     file_path,
+                    output_dir=doc_output_dir,
                     output_format=opts.output_format,
                     lang=opts.mineru_lang,
                     use_ocr=opts.mineru_use_ocr
@@ -106,6 +112,16 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
                 table_extractions = []
 
                 docling_doc = None  # MinerU는 docling_doc 불필요
+
+                # MinerU는 자체적으로 content.md를 생성하므로 output_structure 설정
+                content_path = doc_output_dir / "content.md"
+                output_structure = {
+                    "output_dir": str(doc_output_dir),
+                    "content_file": str(content_path),
+                    "images_dir": str(doc_output_dir / "images"),
+                    "tables_dir": None  # MinerU는 표를 content.md에 통합
+                }
+                output_path = content_path
 
             except Exception as e:
                 logger.error(f"Error during MinerU parsing: {str(e)}", exc_info=True)
@@ -146,13 +162,16 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")
 
         # Phase 3: Extract tables if enabled
-        # NOTE: MinerU 사용 시 table_summary가 이미 설정되어 있음
+        # NOTE: MinerU 사용 시 table_summary와 output_structure가 이미 설정되어 있음
         if 'table_summary' not in locals():
             table_summary = None
-        output_structure = None
+        if 'output_structure' not in locals():
+            output_structure = None
+        if 'output_path' not in locals():
+            output_path = None
 
         # MinerU를 사용한 경우 table extraction 스킵 (MinerU가 자동 처리)
-        if opts.extract_tables and opts.save_to_output_folder and docling_doc:
+        if opts.extract_tables and opts.save_to_output_folder and docling_doc and output_structure is None:
             try:
                 # Create output directory for this document
                 doc_name = file_path.stem
@@ -207,8 +226,8 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
             }
 
             output_path = content_path
-        else:
-            # Legacy mode: save to docu folder
+        elif output_path is None:
+            # Legacy mode: save to docu folder (only if not already saved)
             # Determine file extension based on output format
             if opts.output_format == "html":
                 ext = ".html"

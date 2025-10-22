@@ -47,6 +47,7 @@ except ImportError as e:
 
 async def parse_with_mineru(
     file_path: Path,
+    output_dir: Optional[Path] = None,
     output_format: str = "markdown",
     lang: str = "auto",
     use_ocr: bool = True
@@ -56,6 +57,7 @@ async def parse_with_mineru(
 
     Args:
         file_path: PDF 파일 경로
+        output_dir: 출력 디렉토리 (None이면 file_path.parent/mineru_output 사용)
         output_format: 출력 형식 (markdown, html, json)
         lang: 언어 (auto = 자동 인식, ko = 한국어, ch = 중국어, en = 영어, ja = 일본어)
         use_ocr: OCR 사용 여부
@@ -78,9 +80,10 @@ async def parse_with_mineru(
     logger.info(f"🔮 MinerU parsing: {file_path.name} (version={MINERU_VERSION}, lang={lang}, ocr={use_ocr})")
 
     try:
-        # 출력 디렉토리 생성
-        output_dir = file_path.parent / "mineru_output"
-        output_dir.mkdir(exist_ok=True)
+        # 출력 디렉토리 생성 (지정되지 않으면 기본 경로 사용)
+        if output_dir is None:
+            output_dir = file_path.parent / "mineru_output"
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         image_dir = output_dir / "images"
         image_dir.mkdir(exist_ok=True)
