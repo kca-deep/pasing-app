@@ -1,0 +1,33 @@
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+python-dotenv>=1.1.0
+pydantic>=2.11.0,<3.0.0
+docling>=2.0.0
+
+# Database
+sqlalchemy==2.0.36
+alembic==1.14.0
+httpx==0.28.1
+httpx-sse>=0.4
+tqdm==4.67.1
+
+# OCR dependencies
+easyocr>=1.7.0
+onnxruntime>=1.16.0  # Required for RapidOCR backend
+
+# Table parsing libraries
+pdfplumber>=0.11.0
+camelot-py>=0.11.0
+tabula-py>=2.9.0
+# Note: camelot-py requires opencv-python (already installed by mineru)
+
+# MinerU - Universal PDF parser (optional, recommended)
+# Features: 병합 셀, 계층적 표, 텍스트 순서 자동 정렬, 84개 언어 지원
+# Install with: pip install mineru
+mineru>=0.9.0
+
+# Picture Description (VLM) dependencies
+# Install these if you want to use Picture Description feature:
+# pip install transformers>=4.30.0 torch>=2.0.0 pillow>=10.0.0
+# Or install with: pip install docling[vlm]
