@@ -157,7 +157,11 @@ export default function ParsePage() {
             {error && (
               <Alert variant="destructive" className="animate-scale-in">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  <div className="whitespace-pre-wrap font-mono text-sm">
+                    {error}
+                  </div>
+                </AlertDescription>
               </Alert>
             )}
           </div>

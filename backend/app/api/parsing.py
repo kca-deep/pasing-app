@@ -109,30 +109,15 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
                 raise HTTPException(status_code=500, detail=f"MinerU parsing failed: {str(e)}")
 
         elif is_pdf and opts.use_mineru and not MINERU_AVAILABLE:
-            # MinerU 요청했지만 설치 안 됨 → Fallback to Camelot/Docling
-            warning_msg = "MinerU requested but not installed. Falling back to Docling/Camelot. Install with: pip install magic-pdf[full]"
-            warnings.append(warning_msg)
-            logger.warning(f"⚠️ {warning_msg}")
-
-            will_use_camelot = opts.use_camelot and CAMELOT_AVAILABLE
-
-            if is_pdf and opts.use_camelot and not CAMELOT_AVAILABLE:
-                logger.warning("⚠️ Camelot also not available. Using Docling only.")
-
-            strategy = 'Docling+Camelot Hybrid' if will_use_camelot else 'Docling Only'
-            logger.info(f"📄 Parsing: {request.filename} | Strategy: {strategy}")
-
-            # Force Markdown table export when using Camelot (for compatibility)
-            if will_use_camelot and opts.tables_as_html:
-                logger.info("  Forcing tables_as_html=False for Camelot compatibility")
-                opts.tables_as_html = False
-
-            # Parse document using Docling library directly
-            try:
-                content, docling_doc = await parse_document_with_docling(file_path, opts)
-            except Exception as e:
-                logger.error(f"Error during Docling parsing: {str(e)}", exc_info=True)
-                raise HTTPException(status_code=500, detail=f"Parsing failed: {str(e)}")
+            # MinerU 요청했지만 설치 안 됨 → 에러 반환 (fallback 없음)
+            error_msg = (
+                "MinerU is not installed. Please install MinerU to use this feature.\n\n"
+                "Installation command:\n"
+                "  pip install magic-pdf[full]\n\n"
+                "Or use Camelot/Docling parsing strategy instead."
+            )
+            logger.error(f"❌ MinerU requested but not available")
+            raise HTTPException(status_code=400, detail=error_msg)
 
         else:
             # 기존 Camelot/Docling 로직 (MinerU 미사용)
