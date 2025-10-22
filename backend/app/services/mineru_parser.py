@@ -172,6 +172,29 @@ async def parse_with_mineru(
 
         return content, metadata
 
+    except FileNotFoundError as e:
+        # Model weights not found - provide clear installation instructions
+        error_msg = str(e)
+        if "yolo_v8_ft.pt" in error_msg or "models" in error_msg.lower():
+            logger.error("❌ MinerU model weights not found!")
+            logger.error("   MinerU requires downloading AI models (~2-3GB) before first use.")
+            logger.error("")
+            logger.error("   Quick fix:")
+            logger.error("   1. Run: python backend/download_mineru_models.py")
+            logger.error("   2. Or run: magic-pdf --download-models")
+            logger.error("")
+            logger.error(f"   Original error: {error_msg}")
+
+            raise ImportError(
+                "MinerU model weights not found. "
+                "Download models with: magic-pdf --download-models "
+                "or run: python backend/download_mineru_models.py "
+                f"(Missing: {error_msg})"
+            )
+        else:
+            logger.error(f"❌ MinerU file error: {str(e)}", exc_info=True)
+            raise
+
     except Exception as e:
         logger.error(f"❌ MinerU parsing failed: {str(e)}", exc_info=True)
         raise

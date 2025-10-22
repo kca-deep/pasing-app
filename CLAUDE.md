@@ -465,6 +465,23 @@ Invoke-RestMethod -Uri "http://localhost:8000/parse" -Method Post -ContentType "
 ## Common Issues
 
 ### Backend Issues
+
+#### MinerU Model Setup (Critical)
+- **MinerU model weights not found** (`FileNotFoundError: yolo_v8_ft.pt`):
+  - **Cause**: MinerU requires downloading AI models (~2-3GB) before first use
+  - **Quick Fix**:
+    1. Run: `.\backend\setup_mineru.ps1` (easiest, interactive)
+    2. Or run: `mineru-models-download -m pipeline -s huggingface` (auto-download)
+    3. Or run: `python backend/download_mineru_models.py` (check status)
+  - **Detailed Guide**: See `backend/MINERU_SETUP.md` for complete instructions
+  - **Manual Download**: Download from [HuggingFace](https://huggingface.co/wanderkid/PDF-Extract-Kit) or [ModelScope](https://www.modelscope.cn/models/wanderkid/PDF-Extract-Kit)
+  - **Models Required**:
+    - Layout Detection Model (~400 MB)
+    - Formula Detection Model (yolo_v8_ft.pt, ~100 MB)
+    - Table Recognition Model (~200 MB)
+  - **One-time Setup**: Models are downloaded once and reused for all future parses
+
+#### Other Backend Issues
 - **Camelot not installed**: Run `pip install camelot-py[cv]` in the backend venv
 - **EasyOCR not installed**: Run `pip install easyocr` in the backend venv
 - **Model download on first run**: First document parse may take time as Docling downloads models

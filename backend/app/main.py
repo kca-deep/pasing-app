@@ -26,6 +26,12 @@ from app.api import health, documents, parsing, results, database
 # Import database initialization
 from app.init_db import init_db
 
+# Import logging configuration
+from app.logging_config import configure_logging
+
+# Configure UTF-8 logging
+configure_logging()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
