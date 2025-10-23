@@ -130,7 +130,7 @@ export function ParsingOptions({ options, onOptionsChange }: ParsingOptionsProps
                 <Label htmlFor="mineru-lang">Language</Label>
                 <Select
                   value={options.mineru_lang || 'auto'}
-                  onValueChange={(value) => updateOption('mineru_lang', value as 'auto' | 'ko' | 'ch' | 'en' | 'ja')}
+                  onValueChange={(value) => updateOption('mineru_lang', value as 'auto' | 'ko' | 'zh' | 'en' | 'ja')}
                 >
                   <SelectTrigger id="mineru-lang">
                     <SelectValue placeholder="Select language" />
@@ -138,7 +138,7 @@ export function ParsingOptions({ options, onOptionsChange }: ParsingOptionsProps
                   <SelectContent>
                     <SelectItem value="auto">Auto-detect</SelectItem>
                     <SelectItem value="ko">Korean (한국어)</SelectItem>
-                    <SelectItem value="ch">Chinese (中文)</SelectItem>
+                    <SelectItem value="zh">Chinese (中文)</SelectItem>
                     <SelectItem value="en">English</SelectItem>
                     <SelectItem value="ja">Japanese (日本語)</SelectItem>
                   </SelectContent>

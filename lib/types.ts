@@ -23,7 +23,7 @@ export interface ParseOptions {
   camelot_accuracy_threshold?: number;
 
   // MinerU options (Universal)
-  mineru_lang?: 'auto' | 'ko' | 'ch' | 'en' | 'ja';
+  mineru_lang?: 'auto' | 'ko' | 'zh' | 'en' | 'ja';
   mineru_use_ocr?: boolean;
 
   // Picture Description options

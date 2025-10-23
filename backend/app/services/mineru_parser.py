@@ -91,13 +91,16 @@ async def parse_with_mineru(
         # PDF 읽기
         pdf_bytes = file_path.read_bytes()
 
-        # 언어 설정 (magic-pdf 형식으로 변환)
-        if lang in ["ko", "kr", "korean"]:
-            ocr_lang = "ch"  # 한중일 혼합 모델 사용
-        elif lang == "auto":
-            ocr_lang = None  # 자동 인식
-        else:
-            ocr_lang = lang
+        # 언어 설정 (magic-pdf 내부 형식으로 변환)
+        # MinerU 실제 지원 언어 코드: korean, japan, ch, en (models_config.yml 참조)
+        lang_mapping = {
+            "ko": "korean",  # 한국어
+            "ja": "japan",   # 일본어
+            "zh": "ch",      # 중국어
+            "en": "en",      # 영어
+            "auto": None     # 자동 인식
+        }
+        ocr_lang = lang_mapping.get(lang, lang)  # 매핑되지 않은 경우 원본 사용
 
         # PymuDocDataset 생성
         logger.info("  Step 1/4: Creating dataset...")
@@ -110,13 +113,15 @@ async def parse_with_mineru(
         # Document 분석
         logger.info("  Step 2/4: Analyzing document...")
         # formula_enable=False: 수식 인식 비활성화 (transformers 호환성 문제 회피)
-        # layout_model 지정하지 않음: magic-pdf.json의 layout-config 사용
+        # table_enable=True: 표 인식 활성화 (HTML 변환)
+        # layout_model="doclayout_yolo": YOLOv8 기반 모델 사용 (detectron2 불필요)
         infer_result = ds.apply(
             doc_analyze,
             ocr=use_ocr,
             lang=ds._lang,
             formula_enable=False,  # 명시적으로 수식 인식 비활성화
-            layout_model=None  # None = magic-pdf.json 설정 사용
+            table_enable=True,     # 표 인식 활성화 (이미지 대신 HTML로 변환)
+            layout_model="doclayout_yolo"  # YOLOv8 기반 (detectron2 불필요, doclayout-yolo 패키지 사용)
         )
 
         # 파이프라인 실행 (OCR 모드 or TXT 모드)
@@ -158,7 +163,8 @@ async def parse_with_mineru(
             "images": total_images,
             "formulas": total_formulas,
             "pages": len(pdf_info) if pdf_info else 0,
-            "language": ds._lang or lang,
+            "language": lang,  # 사용자가 선택한 언어 (ko, ch, en, ja, auto)
+            "ocr_language": ds._lang or ocr_lang,  # 실제 OCR에 사용된 언어
             "parsing_method": "mineru_magic_pdf_1.3",
             "ocr_enabled": use_ocr
         }

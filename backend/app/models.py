@@ -49,7 +49,7 @@ class TableParsingOptions(BaseModel):
     # NOTE: MinerU는 모든 문서 타입을 자동으로 처리 (하드코딩 불필요)
     # Features: 병합 셀, 계층적 표, 텍스트 순서 자동 정렬, 84개 언어 지원
     use_mineru: bool = False  # Use MinerU for parsing (recommended for complex documents)
-    mineru_lang: Literal["auto", "ko", "ch", "en", "ja"] = "auto"  # Language (auto = automatic detection)
+    mineru_lang: Literal["auto", "ko", "zh", "en", "ja"] = "auto"  # Language (auto = automatic detection, ko=Korean, zh=Chinese, en=English, ja=Japanese)
     mineru_use_ocr: bool = True  # Use OCR for scanned documents
 
     # Picture Description options (Vision Language Model for image analysis)

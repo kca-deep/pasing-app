@@ -10,11 +10,6 @@ pydantic-settings==2.11.0
 sqlalchemy==2.0.36
 alembic==1.14.0
 
-# HTTP Client
-httpx==0.28.1
-httpx-sse==0.4.3
-requests==2.32.5
-
 # Progress Bar
 tqdm==4.67.1
 
@@ -37,8 +32,6 @@ rapidocr==3.4.2
 # Table Parsing Libraries
 pdfplumber==0.11.7
 camelot-py==1.0.9
-tabula-py==2.10.0
-rapid-table==1.0.5
 
 # PDF Processing
 PyMuPDF==1.24.14
@@ -59,7 +52,7 @@ albucore==0.0.24
 # Computer Vision & Object Detection
 pycocotools==2.0.10
 ultralytics==8.3.219
-doclayout-yolo==0.0.2b1
+doclayout-yolo==0.0.2b1  # YOLOv8 기반 레이아웃 모델 (detectron2 불필요)
 
 # Machine Learning & Deep Learning
 torch==2.9.0
@@ -77,15 +70,10 @@ pandas==2.3.3
 scikit-learn==1.7.2
 polars==1.34.0
 
-# Data Visualization
-matplotlib==3.10.7
-seaborn==0.13.2
-
 # Office Document Processing
 python-docx==1.2.0
 python-pptx==1.0.2
 openpyxl==3.1.5
-xlsxwriter==3.2.9
 
 # Text Processing
 beautifulsoup4==4.14.2
@@ -105,7 +93,7 @@ PyYAML==6.0.3
 # Utilities
 rich==14.2.0
 typer==0.19.2
-click==8.3.0
+click==8.1.8
 coloredlogs==15.0.1
 colorlog==6.10.1
 loguru==0.7.3
@@ -113,13 +101,6 @@ python-dateutil==2.9.0.post0
 pytz==2025.2
 filelock==3.20.0
 psutil==7.1.1
-
-# AWS & Cloud Storage
-boto3==1.40.56
-botocore==1.40.56
-
-# Compression
-Brotli==1.1.0
 
 # Security
 cryptography==46.0.3
@@ -145,9 +126,6 @@ tabulate==0.9.0
 semchunk==2.2.2
 shapely==2.1.2
 rtree==1.4.1
-Faker==37.11.0
 fast-langdetect==0.2.5
 chardet==5.2.0
-filetype==1.2.0
 flatbuffers==25.9.23
-reportlab==4.4.4

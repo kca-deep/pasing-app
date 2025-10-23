@@ -95,6 +95,39 @@ export function MetadataPanel({ result, filename, className }: MetadataPanelProp
                   </Badge>
                 </div>
               )}
+              {result.table_summary.parsing_method === 'mineru' && (
+                <>
+                  {result.table_summary.language && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Language</span>
+                      <Badge variant="outline">
+                        {result.table_summary.language === 'ko' ? '한국어 (Korean)' :
+                         result.table_summary.language === 'zh' ? '中文 (Chinese)' :
+                         result.table_summary.language === 'en' ? 'English' :
+                         result.table_summary.language === 'ja' ? '日本語 (Japanese)' :
+                         result.table_summary.language === 'auto' ? 'Auto-detect' :
+                         result.table_summary.language}
+                      </Badge>
+                    </div>
+                  )}
+                  {result.table_summary.total_images !== undefined && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Images</span>
+                      <Badge variant="outline">
+                        {result.table_summary.total_images}
+                      </Badge>
+                    </div>
+                  )}
+                  {result.table_summary.total_formulas !== undefined && result.table_summary.total_formulas > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Formulas</span>
+                      <Badge variant="outline">
+                        {result.table_summary.total_formulas}
+                      </Badge>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
