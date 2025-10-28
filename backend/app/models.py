@@ -11,6 +11,7 @@ class TableParsingOptions(BaseModel):
     """Table parsing options"""
     # Basic parsing options
     do_ocr: bool = False  # OCR for scanned PDFs (default: False for speed)
+    ocr_engine: Literal["easyocr", "tesseract"] = "easyocr"  # Local OCR engine ("easyocr"=accurate, "tesseract"=fast)
     table_mode: str = "accurate"  # Table detection mode: "fast" or "accurate"
     do_cell_matching: bool = False  # False: more effective for merged cells
     ocr_lang: Optional[List[str]] = None  # OCR languages, e.g., ["ko", "en"]
@@ -38,9 +39,9 @@ class TableParsingOptions(BaseModel):
     assume_first_row_header: Optional[bool] = None  # None = auto-detect, True/False = force
 
     # Camelot table extraction options (PDF only, high accuracy)
-    # NOTE: Camelot is automatically used for PDF files (default behavior)
+    # NOTE: Camelot can be used for PDF files for better table extraction
     # For non-PDF files (DOCX, PPTX, HTML), Docling is used automatically
-    use_camelot: bool = True  # Use Camelot for table extraction (default: True for PDFs)
+    use_camelot: bool = False  # Use Camelot for table extraction
     camelot_mode: Literal["lattice", "stream", "hybrid"] = "hybrid"  # Camelot extraction mode
     camelot_pages: str = "all"  # Pages to extract tables from (e.g., "1,2,3" or "1-5" or "all")
     camelot_accuracy_threshold: float = 0.7  # Minimum accuracy for LATTICE mode (0.0-1.0)
@@ -51,6 +52,13 @@ class TableParsingOptions(BaseModel):
     use_mineru: bool = False  # Use MinerU for parsing (recommended for complex documents)
     mineru_lang: Literal["auto", "ko", "zh", "en", "ja"] = "auto"  # Language (auto = automatic detection, ko=Korean, zh=Chinese, en=English, ja=Japanese)
     mineru_use_ocr: bool = True  # Use OCR for scanned documents
+
+    # Dolphin options (ByteDance Dolphin 1.5 - AI-Powered Document Parser via Remote GPU)
+    # NOTE: Dolphin uses multimodal AI for high-accuracy parsing on remote GPU server
+    # Features: 영문 약어 정확도, 괄호 보존, 날짜 형식 유지, 고정밀도 (OmniDocBench 83.21)
+    use_dolphin: bool = False  # Use Dolphin Remote GPU for parsing (AI-powered, high accuracy)
+    dolphin_parsing_level: Literal["page", "element", "layout"] = "page"  # Parsing granularity (page=recommended, element=detailed, layout=structure)
+    dolphin_max_batch_size: int = 8  # Batch size for processing (4, 8, 16 - higher is faster but uses more memory)
 
     # Picture Description options (Vision Language Model for image analysis)
     do_picture_description: bool = False  # Enable picture description (default: False for performance)
@@ -67,6 +75,11 @@ class TableParsingOptions(BaseModel):
     #   - Visualizations (charts, graphs, diagrams) → Picture Description
     #   - Complex images → Both OCR + Picture Description
 
+    # Remote OCR Service (http://kca-ai.kro.kr:8005/ocr/extract)
+    use_remote_ocr: bool = False  # Use remote OCR service instead of local EasyOCR
+    remote_ocr_engine: Literal["tesseract", "paddleocr", "dolphin"] = "paddleocr"  # Remote OCR engine ("tesseract"=fast ~0.2s, "paddleocr"=accurate ~1.6s, "dolphin"=AI ~5s)
+    remote_ocr_languages: Optional[List[str]] = None  # OCR languages for remote service, e.g., ["kor", "eng"]
+
 
 class ParseRequest(BaseModel):
     filename: str
@@ -81,6 +94,24 @@ class DocumentInfo(BaseModel):
     filename: str
     size: int
     extension: str
+
+
+class ParsingMetadata(BaseModel):
+    """Metadata about the parsing process"""
+    parser_used: str  # "docling", "mineru", "dolphin", "camelot"
+    table_parser: Optional[str] = None  # "docling", "camelot", "mineru"
+    ocr_enabled: bool = False
+    ocr_engine: Optional[str] = None  # "easyocr", "remote-tesseract", "remote-paddleocr", "remote-dolphin"
+    output_format: str = "markdown"
+
+    # Parser-specific options used
+    camelot_mode: Optional[str] = None  # "lattice", "stream", "hybrid"
+    dolphin_parsing_level: Optional[str] = None  # "page", "element", "layout"
+    mineru_lang: Optional[str] = None  # "auto", "ko", "zh", "en", "ja"
+
+    # Additional features used
+    picture_description_enabled: bool = False
+    auto_image_analysis_enabled: bool = False
 
 
 class ParseResponse(BaseModel):
@@ -101,3 +132,6 @@ class ParseResponse(BaseModel):
 
     # Warnings for user (e.g., MinerU requested but not installed)
     warnings: Optional[List[str]] = None
+
+    # Parsing metadata (v2.3.0+)
+    parsing_metadata: Optional[ParsingMetadata] = None  # Details about parsing options used

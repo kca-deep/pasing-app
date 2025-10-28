@@ -10,9 +10,11 @@ import os
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Configure logging (level from environment variable)
+log_level_str = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_str, logging.INFO)
 logging.basicConfig(
-    level=logging.INFO,
+    level=log_level,
     format='%(levelname)s: %(message)s'
 )
 
@@ -29,11 +31,12 @@ API_VERSION = "2.2.0"
 API_TITLE = "Document Parser API"
 API_DESCRIPTION = "High-accuracy document parsing with Docling + Camelot hybrid strategy + VLM Picture Description"
 
-# CORS Configuration
-CORS_ALLOW_ORIGINS = ["*"]  # In production, specify exact domains
-CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_METHODS = ["*"]
-CORS_ALLOW_HEADERS = ["*"]
+# CORS Configuration (from environment variables)
+cors_origins_str = os.getenv("CORS_ALLOW_ORIGINS", "*")
+CORS_ALLOW_ORIGINS = cors_origins_str.split(",") if cors_origins_str != "*" else ["*"]
+CORS_ALLOW_CREDENTIALS = os.getenv("CORS_ALLOW_CREDENTIALS", "True").lower() in ("true", "1", "yes")
+CORS_ALLOW_METHODS = os.getenv("CORS_ALLOW_METHODS", "*").split(",") if os.getenv("CORS_ALLOW_METHODS") != "*" else ["*"]
+CORS_ALLOW_HEADERS = os.getenv("CORS_ALLOW_HEADERS", "*").split(",") if os.getenv("CORS_ALLOW_HEADERS") != "*" else ["*"]
 
 # Directory Configuration
 # Point to docu folder relative to backend folder

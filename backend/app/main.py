@@ -21,7 +21,7 @@ from app.config import (
 )
 
 # Import routers
-from app.api import health, documents, parsing, results, database
+from app.api import health, documents, parsing, results, database, async_parsing
 
 # Import database initialization
 from app.init_db import init_db
@@ -66,6 +66,7 @@ app.add_middleware(
 app.include_router(health.router, tags=["Health"])
 app.include_router(documents.router, tags=["Documents"])
 app.include_router(parsing.router, tags=["Parsing"])
+app.include_router(async_parsing.router, tags=["Async Parsing"])
 app.include_router(results.router, tags=["Results"])
 app.include_router(database.router, tags=["Database"])
 

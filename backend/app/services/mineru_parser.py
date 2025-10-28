@@ -45,12 +45,13 @@ except ImportError as e:
     MINERU_AVAILABLE = False
 
 
-async def parse_with_mineru(
+def parse_with_mineru(
     file_path: Path,
     output_dir: Optional[Path] = None,
     output_format: str = "markdown",
     lang: str = "auto",
-    use_ocr: bool = True
+    use_ocr: bool = True,
+    progress_callback: Optional[callable] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
     MinerU로 PDF 파싱 (magic-pdf 1.3+ API)
@@ -103,6 +104,8 @@ async def parse_with_mineru(
         ocr_lang = lang_mapping.get(lang, lang)  # 매핑되지 않은 경우 원본 사용
 
         # PymuDocDataset 생성
+        if progress_callback:
+            progress_callback(20, "📄 Step 1/4: Creating dataset...")
         logger.info("  Step 1/4: Creating dataset...")
         ds = PymuDocDataset(pdf_bytes, lang=ocr_lang)
 
@@ -111,6 +114,8 @@ async def parse_with_mineru(
         md_writer = FileBasedDataWriter(str(output_dir))
 
         # Document 분석
+        if progress_callback:
+            progress_callback(40, "🔍 Step 2/4: Analyzing document...")
         logger.info("  Step 2/4: Analyzing document...")
         # formula_enable=False: 수식 인식 비활성화 (transformers 호환성 문제 회피)
         # table_enable=True: 표 인식 활성화 (HTML 변환)
@@ -125,6 +130,8 @@ async def parse_with_mineru(
         )
 
         # 파이프라인 실행 (OCR 모드 or TXT 모드)
+        if progress_callback:
+            progress_callback(70, "⚙️ Step 3/4: Processing pipeline...")
         logger.info("  Step 3/4: Processing pipeline...")
         if use_ocr:
             pipe_result = infer_result.pipe_ocr_mode(
@@ -140,6 +147,8 @@ async def parse_with_mineru(
             )
 
         # Markdown 생성
+        if progress_callback:
+            progress_callback(90, "📝 Step 4/4: Generating markdown...")
         logger.info("  Step 4/4: Generating markdown...")
         # dump_md() signature: dump_md(writer, file_path, image_dir)
         pipe_result.dump_md(md_writer, "content.md", str(image_dir))

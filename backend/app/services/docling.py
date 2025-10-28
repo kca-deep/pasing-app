@@ -7,6 +7,7 @@ Handles document parsing using the Docling library.
 from pathlib import Path
 import json
 import logging
+import os
 
 # Docling imports for direct library usage
 from docling.document_converter import DocumentConverter, PdfFormatOption
@@ -15,6 +16,8 @@ from docling.datamodel.pipeline_options import (
     PdfPipelineOptions,
     TableFormerMode,
     PictureDescriptionVlmOptions,
+    TesseractOcrOptions,
+    EasyOcrOptions,
     smolvlm_picture_description,
     granite_picture_description
 )
@@ -27,8 +30,11 @@ from app.models import TableParsingOptions
 
 logger = logging.getLogger(__name__)
 
+# Docling EasyOCR 기본 언어 설정
+DEFAULT_DOCLING_OCR_LANGUAGES = os.getenv("DEFAULT_DOCLING_OCR_LANGUAGES", "ko,en").split(",")
 
-async def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> tuple:
+
+def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> tuple:
     """
     Parse document using Docling library directly (Standard PDF Pipeline only)
 
@@ -47,10 +53,34 @@ async def parse_document_with_docling(file_path: Path, opts: TableParsingOptions
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = opts.do_ocr
 
-    # Korean language optimization for OCR (EasyOCR)
+    # OCR Configuration
     if opts.do_ocr:
-        pipeline_options.ocr_options.lang = ["ko", "en"]  # Korean + English
-        logger.info("  OCR: Korean + English language support enabled")
+        # Remote OCR 요청은 Docling에서 처리 불가
+        # Remote OCR는 parsing.py에서 parse_with_remote_ocr()로 별도 처리됨
+        if opts.use_remote_ocr:
+            # Docling은 remote OCR을 지원하지 않으므로 local OCR로 fallback
+            logger.warning("⚠️ Docling does not support remote OCR. Using local OCR instead.")
+            logger.warning("   To use remote OCR, set use_remote_ocr=True at the parsing.py level.")
+
+            ocr_langs = opts.ocr_lang or opts.remote_ocr_languages or DEFAULT_DOCLING_OCR_LANGUAGES
+
+            # Select OCR engine based on user preference
+            if opts.ocr_engine == "tesseract":
+                pipeline_options.ocr_options = TesseractOcrOptions(lang=ocr_langs)
+                logger.info(f"  OCR: Tesseract with languages {ocr_langs} (remote OCR not available)")
+            else:  # easyocr (default)
+                pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
+                logger.info(f"  OCR: EasyOCR with languages {ocr_langs} (remote OCR not available)")
+        else:
+            # Local OCR with engine selection
+            ocr_langs = opts.ocr_lang or DEFAULT_DOCLING_OCR_LANGUAGES
+
+            if opts.ocr_engine == "tesseract":
+                pipeline_options.ocr_options = TesseractOcrOptions(lang=ocr_langs)
+                logger.info(f"  OCR: Tesseract (fast) with languages {ocr_langs}")
+            else:  # easyocr (default)
+                pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
+                logger.info(f"  OCR: EasyOCR (accurate) with languages {ocr_langs}")
 
     pipeline_options.do_table_structure = True
 

@@ -7,7 +7,7 @@ import { ParsingOptions } from '@/components/upload/ParsingOptions';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
-import { uploadFile, parseDocument } from '@/lib/api';
+import { uploadFile, parseDocumentAsync, getParsingStatus } from '@/lib/api';
 import type { ParseOptions } from '@/lib/types';
 import { AlertCircle, AlertTriangle, FileText, Sparkles, Zap } from 'lucide-react';
 
@@ -15,13 +15,13 @@ export default function ParsePage() {
   const router = useRouter();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [options, setOptions] = useState<ParseOptions>({
-    // Default strategy: MinerU (Universal, Recommended)
-    use_mineru: true,
-    use_camelot: false,
+    // Default strategy: Camelot + Docling (Hybrid, High-Accuracy Table Extraction)
+    use_dolphin: false,
+    use_mineru: false,
+    use_camelot: true,
 
-    // MinerU options
-    mineru_lang: 'auto',
-    mineru_use_ocr: true,
+    // Camelot options
+    camelot_mode: 'hybrid',
 
     // Common options
     output_format: 'markdown',
@@ -47,47 +47,80 @@ export default function ParsePage() {
 
     try {
       // Step 1: Upload file to backend
-      setProgressMessage('📤 Uploading file...');
-      setProgress(20);
+      setProgressMessage('Uploading file...');
+      setProgress(10);
 
       await uploadFile(selectedFile);
 
-      setProgressMessage('📄 Parsing document...');
-      setProgress(50);
+      // Step 2: Start async parsing job
+      setProgressMessage('Starting parsing job...');
+      setProgress(20);
 
-      // Step 2: Parse the uploaded document
-      const result = await parseDocument({
+      const jobResponse = await parseDocumentAsync({
         filename: selectedFile.name,
         options,
       });
 
-      setProgressMessage('📊 Extracting tables...');
-      setProgress(75);
+      // Step 3: Poll for job status
+      const jobId = jobResponse.job_id;
+      let pollingInterval: NodeJS.Timeout | null = null;
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const pollStatus = async () => {
+        try {
+          const status = await getParsingStatus(jobId);
 
-      if (result.success) {
-        // Check for warnings
-        if (result.warnings && result.warnings.length > 0) {
-          setWarnings(result.warnings);
+          // Update progress
+          setProgress(Math.max(20, status.progress));
+          setProgressMessage(status.message || 'Processing...');
+
+          if (status.status === 'completed') {
+            // Clear polling
+            if (pollingInterval) clearInterval(pollingInterval);
+
+            const result = status.result;
+            if (result) {
+              // Check for warnings
+              if (result.warnings && result.warnings.length > 0) {
+                setWarnings(result.warnings);
+              }
+
+              setProgressMessage('Parsing complete!');
+              setProgress(100);
+
+              // Wait a bit to show success message
+              await new Promise(resolve => setTimeout(resolve, result.warnings ? 2000 : 500));
+
+              // Navigate to viewer with filename
+              router.push(`/viewer?file=${encodeURIComponent(selectedFile.name)}`);
+            }
+
+            setIsLoading(false);
+          } else if (status.status === 'failed') {
+            // Clear polling
+            if (pollingInterval) clearInterval(pollingInterval);
+
+            setError(status.error || 'Parsing failed. Please try again.');
+            setProgress(0);
+            setIsLoading(false);
+          }
+        } catch (err) {
+          // Error polling status
+          if (pollingInterval) clearInterval(pollingInterval);
+          setError(err instanceof Error ? err.message : 'Failed to get parsing status');
+          setProgress(0);
+          setIsLoading(false);
         }
+      };
 
-        setProgressMessage('✅ Parsing complete!');
-        setProgress(100);
+      // Start polling every 2 seconds
+      pollingInterval = setInterval(pollStatus, 2000);
 
-        // Wait a bit to show success message (longer if warnings present)
-        await new Promise(resolve => setTimeout(resolve, result.warnings ? 2000 : 500));
+      // Initial poll
+      await pollStatus();
 
-        // Navigate to viewer with filename
-        router.push(`/viewer?file=${encodeURIComponent(selectedFile.name)}`);
-      } else {
-        setError(result.error || 'Parsing failed. Please try again.');
-        setProgress(0);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Parsing failed. Please try again.');
       setProgress(0);
-    } finally {
       setIsLoading(false);
     }
   };

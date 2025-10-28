@@ -4,8 +4,8 @@
 # Get the script directory
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-# Backend command
-$BackendCommand = "Set-Location '$ScriptDir\backend'; python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+# Backend command (with INFO log level for better visibility)
+$BackendCommand = "Set-Location '$ScriptDir\backend'; python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level info"
 
 # Frontend command
 $FrontendCommand = "Set-Location '$ScriptDir'; npm run dev"

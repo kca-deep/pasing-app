@@ -4,86 +4,51 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a document parsing application consisting of:
-- **Frontend**: Next.js 15 application with TypeScript and Tailwind CSS 4
-- **Backend**: FastAPI service that uses Docling library directly for document parsing
-- **Architecture**: Frontend communicates with FastAPI backend, which uses Docling Python library
+A Next.js + FastAPI document parsing application that converts PDF/Office documents to Markdown/HTML/JSON. Supports multiple parsing strategies: Docling (default), Camelot (table extraction), MinerU (universal PDF parser), Dolphin (remote AI-powered OCR), and Remote OCR services.
 
-The application parses documents (PDF, DOCX, PPTX, HTML) into Markdown format using IBM's Docling library directly.
-
-### Implementation Plan
-
-**Complete implementation roadmap** is available in `prompts/integrated-rag-parsing-implementation-plan.md` ⭐
-
-This comprehensive plan includes:
-- **Phase 1-5**: Core RAG parsing features (환경설정, 기본 파싱, 표 추출, 청킹, manifest 생성)
-- **Phase 6-7**: CLI interface + AI table summaries
-- **Phase 8-9**: RAG system integration + optimization
-- **Phase 10**: Dify knowledge base auto-upload system
-
-**When implementing features, follow the plan** for step-by-step guidance, detailed checklists, and validation methods.
-
-## Tech Stack
-
-### Frontend
-- **Framework**: Next.js 15.5.4 with App Router
-- **React**: 19.1.0
-- **TypeScript**: 5.x with strict mode enabled
-- **Styling**: Tailwind CSS 4 with PostCSS
-- **UI Components**: shadcn/ui (New York style) with Lucide React icons
-- **Build Tool**: Turbopack (Next.js native)
-- **Testing**: Playwright 1.56.0
-
-### Backend
-- **Framework**: FastAPI 0.115.0
-- **Server**: Uvicorn 0.32.0
-- **Document Parser**: Docling + Camelot hybrid (high-accuracy table extraction)
-  - **Text**: Docling (IBM's document parsing library)
-  - **Tables**: Camelot (LATTICE + STREAM hybrid) for PDF files
-  - **Pictures**: VLM Picture Description (SmolVLM, Granite Vision) - Optional
-- **Environment**: Python 3.13 with virtual environment
+**Tech Stack:**
+- Frontend: Next.js 15.5.4 (App Router), React 19, Tailwind 4, shadcn/ui
+- Backend: FastAPI, SQLAlchemy, Docling, Camelot, MinerU, PyTorch
+- Database: SQLite (parsing_app.db at project root)
 
 ## Development Commands
 
-**IMPORTANT: All commands below are for Windows PowerShell**
+### Starting the Development Servers
 
-### Frontend Commands (PowerShell)
+**Windows (Recommended):**
 ```powershell
-# Start Next.js development server (port 3000)
-npm run dev
+.\start-dev.ps1
+```
+This script starts both backend (port 8000) and frontend (port 3000) in separate PowerShell windows.
 
-# Build production bundle
+**Manual Start:**
+```bash
+# Backend (from /backend)
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level info
+
+# Frontend (from root)
+npm run dev
+```
+
+### Testing
+
+No test suite currently configured. Test manually via:
+- Frontend: http://localhost:3000
+- Backend API docs: http://localhost:8000/docs
+- Backend health: http://localhost:8000/
+
+### Build Commands
+
+```bash
+# Frontend build
 npm run build
 
-# Start production server
+# Frontend production start
 npm start
 
-# Run linter
+# Linting
 npm run lint
 ```
-
-### Backend Commands (PowerShell)
-```powershell
-# Activate virtual environment
-.\backend\venv\Scripts\Activate.ps1
-
-# Start FastAPI development server (port 8000)
-cd backend; python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Install dependencies
-cd backend; pip install -r requirements.txt
-
-# Upload parsed documents to Dify knowledge base
-cd backend; python app/upload_to_dify.py --manifest ../output/sample/manifest.json --content ../output/sample/content.md
-
-# Set encoding for Unicode support (if needed)
-$env:PYTHONIOENCODING="utf-8"
-```
-
-### Windows PowerShell Notes
-- Use semicolon (`;`) for command chaining in PowerShell
-- EasyOCR is required as a dependency for Docling's OCR functionality
-- If PowerShell execution policy blocks scripts, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
 
 ## Architecture
 
@@ -91,486 +56,318 @@ $env:PYTHONIOENCODING="utf-8"
 
 ```
 parsing-app/
-├── app/                    # Next.js App Router (Frontend)
-│   ├── page.tsx           # Main landing page
-│   ├── layout.tsx         # Root layout with fonts
-│   └── globals.css        # Global Tailwind styles
-├── backend/               # Python FastAPI service
-│   ├── app/
-│   │   ├── main.py       # FastAPI application with endpoints
-│   │   └── __init__.py
-│   ├── venv/             # Python virtual environment
-│   └── requirements.txt  # Python dependencies
-├── docu/                  # Document storage folder
-│   ├── README.md         # Document testing guide
-│   ├── *.pdf             # Input PDFs for parsing
-│   ├── *.docx            # Input Word documents
-│   ├── *.html            # Input HTML files
-│   └── *.md              # Output Markdown files (generated)
-├── prompts/              # Implementation plans and guides ⭐
-│   ├── docling-api-test-plan.md  # Complete test plan (Scenarios 1-10)
-│   ├── fastapi-implementation-plan-scenario1-2.md  # Backend implementation guide
-│   ├── integrated-rag-parsing-implementation-plan.md  # Complete RAG roadmap
-│   └── picture-description-guide.md  # VLM Picture Description feature guide
-├── components/            # React components (shadcn/ui)
-├── lib/                   # Utility functions
-│   └── utils.ts          # cn() helper for class merging
-└── public/               # Static assets
+├── app/                    # Next.js App Router pages
+│   ├── page.tsx           # Home page (recent parses)
+│   └── parse/page.tsx     # Document parsing UI
+├── components/            # React components
+│   ├── upload/           # File upload & parsing options
+│   └── viewer/           # Result viewer & metadata panel
+├── lib/                   # Frontend utilities
+│   ├── api.ts            # FastAPI client
+│   └── types.ts          # TypeScript type definitions
+├── backend/              # FastAPI backend
+│   └── app/
+│       ├── main.py       # FastAPI app & router registration
+│       ├── config.py     # Configuration & paths
+│       ├── models.py     # Pydantic models (requests/responses)
+│       ├── database.py   # SQLAlchemy setup
+│       ├── crud.py       # Database operations
+│       ├── schemas.py    # SQLAlchemy ORM models
+│       ├── api/          # API route handlers
+│       │   ├── parsing.py        # Main /parse endpoint
+│       │   ├── async_parsing.py  # Async /parse/async endpoint
+│       │   ├── results.py        # /result & /parsed-documents
+│       │   ├── documents.py      # /documents & /upload
+│       │   └── health.py         # / health check
+│       └── services/     # Parsing engines
+│           ├── docling.py            # Docling parser
+│           ├── mineru_parser.py      # MinerU parser
+│           ├── dolphin_remote.py     # Dolphin remote GPU parser
+│           ├── remote_ocr_parser.py  # Remote OCR parser
+│           └── tables.py             # Camelot integration
+├── docu/                 # Input documents (uploaded files)
+├── output/               # Parsed results (organized by document name)
+└── parsing_app.db        # SQLite database (Document records)
 ```
 
-### Service Architecture
+### Parsing Strategy Flow
 
-**Two-tier architecture:**
+The backend supports **5 parsing strategies** selected via `TableParsingOptions`:
 
-1. **Frontend (Next.js)** - Port 3000
-   - User interface for document selection and display
-   - Currently displays default Next.js landing page
-   - Will communicate with Backend API
+1. **Remote OCR** (`use_remote_ocr=True`) **[Dedicated Parser]**
+   - External OCR service: http://kca-ai.kro.kr:8005/ocr/extract
+   - Engines:
+     * `tesseract` - Fast (~0.2s)
+     * `paddleocr` - Accurate (~1.6s) ⭐ Recommended
+     * `dolphin` - AI-powered (~5s)
+   - Best for: Korean scanned documents/images
+   - Handler: `backend/app/services/remote_ocr_parser.py`
+   - **Note:** Uses dedicated parser, NOT Docling (Docling doesn't support remote OCR)
 
-2. **Backend (FastAPI)** - Port 8000
-   - Exposes REST API endpoints at `backend/app/main.py`
-   - Manages document files in `/docu` folder
-   - **Hybrid parsing strategy** (automatic):
-     - **PDF files**: Camelot (LATTICE + STREAM) for high-accuracy table extraction
-     - **Other files** (DOCX, PPTX, HTML): Docling for all content
-   - Supports OCR, table extraction, and structure preservation
+2. **Dolphin Remote** (`use_dolphin=True`) **[Remote GPU Only]**
+   - ByteDance Dolphin 1.5 multimodal AI running on remote GPU server
+   - High accuracy for abbreviations, brackets, dates (83.21 on OmniDocBench)
+   - Handler: `backend/app/services/dolphin_remote.py`
+   - Options: `dolphin_parsing_level` (page/element/layout), `dolphin_max_batch_size`
+   - **Note:** No local Dolphin installation - all inference done on remote server
 
-### Backend API Endpoints
+3. **MinerU** (`use_mineru=True`)
+   - Universal PDF parser with multilingual OCR (84 languages)
+   - Auto-detects document structure (merged cells, hierarchical tables)
+   - Handler: `backend/app/services/mineru_parser.py`
+   - Options: `mineru_lang` (auto/ko/zh/en/ja), `mineru_use_ocr`
 
-The FastAPI backend (`backend/app/main.py`) provides:
+4. **Camelot** (`use_camelot=True`)
+   - PDF-only table extraction (lattice/stream/hybrid modes)
+   - Replaces Docling tables in final output
+   - Handler: `backend/app/table_utils.py` → `backend/app/services/tables.py`
+   - Options: `camelot_mode`, `camelot_accuracy_threshold`, `camelot_pages`
 
-- `GET /` - API status check, returns version and parsing strategy
-  - Shows: Camelot availability, default parsing strategy
-- `GET /documents` - List all documents in `/docu` folder (returns `DocumentInfo[]`)
-- `POST /parse` - Parse a document to Markdown/HTML/JSON
-  - Request body: `ParseRequest` with filename and options
-  - **PDF files**: Automatically uses Camelot hybrid (LATTICE + STREAM)
-  - **Other files**: Automatically uses Docling
-  - Options: `do_ocr`, `table_mode`, `camelot_mode`, `output_format`, `do_picture_description`, etc.
-  - Returns: `ParseResponse` with content, stats, table summary, pictures summary, and saved file path
-- `GET /download/{filename}` - Download converted file
+5. **Docling** (default)
+   - General-purpose document parser (PDF/DOCX/PPTX/HTML)
+   - Handler: `backend/app/services/docling.py`
+   - Options: OCR (`do_ocr`, `ocr_lang`), Picture Description (`do_picture_description`)
+   - **OCR Engine:** EasyOCR only (local). Does NOT support remote OCR server
 
-**Key implementation details:**
-- **Version**: 2.2.0
-- CORS enabled for all origins (`backend/app/main.py`)
-- Document folder path is `../docu` relative to backend
-- Output folder: `../output/{document_name}/` structure
-  - `content.md` - Main document with integrated tables
-  - `tables/` - Extracted tables (JSON, CSV, Markdown)
-- **Default strategy**: Docling + Camelot hybrid
-  - Docling table parsing is automatically disabled for PDFs
-  - Camelot tables are integrated into final content
-- **Picture Description**: Optional VLM-based image analysis (v2.2.0+)
-  - Disabled by default (requires VLM dependencies)
-  - Supports SmolVLM, Granite Vision, and custom Hugging Face models
-  - Automatically filters images by area threshold
-- Supports multiple output formats: Markdown (default), HTML, JSON
-
-### Path Aliases (Frontend)
-
-TypeScript is configured with the following import aliases:
-- `@/*` - Root directory alias for all imports
-
-shadcn/ui components.json defines additional aliases:
-- `@/components` - UI components
-- `@/ui` - shadcn/ui components specifically
-- `@/lib` - Utility functions
-- `@/hooks` - React hooks
-- `@/utils` - Points to `lib/utils`
-
-### Styling System
-
-- **Tailwind Configuration**: Uses Tailwind CSS 4 with the neutral base color and CSS variables enabled
-- **Global Styles**: Located at `app/globals.css`
-- **Component Styling**: Uses the `cn()` utility from `lib/utils.ts` to merge Tailwind classes with clsx and tailwind-merge
-- **Fonts**: Uses Geist Sans and Geist Mono fonts loaded via `next/font/google` in the root layout
-
-### shadcn/ui Configuration
-
-The project is set up with shadcn/ui using:
-- Style: "new-york"
-- RSC (React Server Components): Enabled
-- Icon library: Lucide React
-- CSS variables: Enabled for theming
-
-Add new shadcn/ui components with:
-```bash
-npx shadcn@latest add [component-name]
+**Selection Logic** (in `backend/app/api/parsing.py`):
+```python
+if opts.use_remote_ocr:        # Remote OCR
+elif opts.use_dolphin:         # Dolphin (remote GPU)
+elif opts.use_mineru:          # MinerU
+elif opts.use_camelot:         # Docling + Camelot hybrid
+else:                          # Docling only
 ```
 
-## Code Conventions
+### Key Data Flow
 
-- **TypeScript**: Strict mode is enabled, all code should be fully typed
-- **ESLint**: Uses Next.js recommended configurations (`next/core-web-vitals` and `next/typescript`)
-- **Component Pattern**: Functional components with TypeScript types
-- **Styling**: Prefer Tailwind utility classes; use the `cn()` helper for conditional classes
+1. **Upload:** Frontend → `POST /upload` → saves to `/docu`
+2. **Parse:** Frontend → `POST /parse` → parsing strategy execution → saves to `/output/{doc_name}/`
+3. **Results:** Frontend → `GET /result/{filename}` → returns cached result
+4. **Database:** All parses tracked in `parsing_app.db` (Document model)
 
-### 🎨 Styling and Theming Rules
+### Frontend State Management
 
-**IMPORTANT: Never hardcode colors, spacing values, or design tokens**
+- No global state library (React hooks only)
+- API calls via `lib/api.ts` (uses native `fetch`)
+- File uploads use `FormData` with 5-minute timeout
+- Async parsing uses polling via `GET /parse/status/{job_id}`
 
-All styling must reference the shadcn/ui theme system defined in `app/globals.css`. This ensures consistent theming, dark mode support, and maintainability.
+### Backend Parsing Metadata
 
-#### Color Usage Rules
+All parsing responses include `ParsingMetadata`:
+- `parser_used`: "docling" | "mineru" | "dolphin" | "camelot" | "remote-ocr"
+- `table_parser`: "docling" | "camelot" | "mineru" (when tables extracted)
+- `ocr_enabled`: bool
+- `ocr_engine`: "easyocr" | "remote-tesseract" | "remote-paddleocr" | "remote-dolphin"
+- Parser-specific fields: `camelot_mode`, `dolphin_parsing_level`, `mineru_lang`
 
-1. **Always use CSS variable classes for colors**
-   - ✅ **Correct**: `className="bg-primary text-primary-foreground"`
-   - ✅ **Correct**: `className="bg-secondary text-secondary-foreground"`
-   - ✅ **Correct**: `className="bg-muted text-muted-foreground"`
-   - ✅ **Correct**: `className="border-border bg-background"`
-   - ❌ **Wrong**: `className="bg-blue-500 text-white"`
-   - ❌ **Wrong**: `className="bg-gray-100 text-gray-900"`
-   - ❌ **Wrong**: `style={{ backgroundColor: '#3b82f6' }}`
+## Important Patterns
 
-2. **Reference theme variables from `app/globals.css`**
+### Error Handling
 
-   Available theme color tokens:
-   - `background` / `foreground` - Base page colors
-   - `primary` / `primary-foreground` - Primary actions and buttons
-   - `secondary` / `secondary-foreground` - Secondary actions
-   - `muted` / `muted-foreground` - Muted backgrounds and text
-   - `accent` / `accent-foreground` - Accent elements
-   - `destructive` / `destructive-foreground` - Error states
-   - `card` / `card-foreground` - Card backgrounds
-   - `popover` / `popover-foreground` - Popover backgrounds
-   - `border` - Border colors
-   - `input` - Input field borders
-   - `ring` - Focus ring colors
+**Backend:**
+- Use `HTTPException(status_code, detail)` for client errors
+- Log errors with `logger.error(msg, exc_info=True)` for tracebacks
+- Return warnings via `ParseResponse.warnings` (list of strings)
+- Check parser availability via `check_*_installation()` functions (e.g., `check_mineru_installation()`)
 
-3. **Use Tailwind's built-in spacing scale**
-   - ✅ **Correct**: `className="p-4 mb-8 gap-6"`
-   - ❌ **Wrong**: `style={{ padding: '16px', marginBottom: '32px' }}`
+**Frontend:**
+- API errors thrown as `Error` objects with `response.json().detail || response.statusText`
+- Display errors in UI via state: `setError(err.message)`
 
-#### Examples
+### Adding New Parsing Options
 
-**Button Styling:**
-```tsx
-// ✅ Correct - Uses theme tokens
-<Button className="bg-primary text-primary-foreground hover:bg-primary/90">
-  Submit
-</Button>
+1. **Backend:** Update `TableParsingOptions` in `backend/app/models.py`
+2. **Frontend:** Update `ParseOptions` interface in `lib/types.ts`
+3. **UI:** Add controls in `components/upload/ParsingOptions.tsx`
+4. **Parser:** Implement logic in `backend/app/api/parsing.py` or new service file
 
-// ❌ Wrong - Hardcoded colors
-<Button className="bg-blue-600 text-white hover:bg-blue-700">
-  Submit
-</Button>
+### Database Operations
+
+- Use `app.database.get_db()` dependency for sessions
+- CRUD functions in `app/crud.py` (e.g., `get_document_by_filename`, `create_document`)
+- ORM models in `app/schemas.py` (e.g., `Document`)
+- Always use `try/except` for DB operations (non-blocking on errors)
+
+### Output Structure
+
+Parsed documents saved to `output/{doc_name}/`:
+```
+output/sample/
+├── sample.md              # Main content
+├── tables/               # Extracted tables (CSV/JSON)
+└── pictures/             # Image descriptions (JSON)
 ```
 
-**Card Styling:**
-```tsx
-// ✅ Correct - Uses theme tokens
-<Card className="border-border bg-card">
-  <CardHeader className="border-b border-border">
-    <CardTitle className="text-card-foreground">Title</CardTitle>
-  </CardHeader>
-</Card>
+## Environment Variables
 
-// ❌ Wrong - Hardcoded colors
-<Card className="border-gray-200 bg-white">
-  <CardHeader className="border-b border-gray-100">
-    <CardTitle className="text-gray-900">Title</CardTitle>
-  </CardHeader>
-</Card>
+**Backend (.env in /backend):**
+
+All backend environment variables are optional with sensible defaults. Copy `backend/.env.example` to `backend/.env` and customize as needed.
+
+### API Server Settings
+- `API_HOST`: Server host address (default: `0.0.0.0`)
+- `API_PORT`: Server port (default: `8000`)
+- `LOG_LEVEL`: Logging level - DEBUG/INFO/WARNING/ERROR (default: `INFO`)
+
+### CORS Configuration
+- `CORS_ALLOW_ORIGINS`: Allowed origins, comma-separated (default: `*`)
+  - **Production:** Set to specific domains (e.g., `http://localhost:3000,https://yourdomain.com`)
+- `CORS_ALLOW_CREDENTIALS`: Allow credentials (default: `True`)
+- `CORS_ALLOW_METHODS`: Allowed HTTP methods (default: `*`)
+- `CORS_ALLOW_HEADERS`: Allowed headers (default: `*`)
+
+### Database Configuration
+- `DATABASE_ECHO`: Log SQL queries - True/False (default: `True`)
+  - **Production:** Set to `False` for better performance
+- `DATABASE_PATH`: Database file path relative to backend/ (default: `../parsing_app.db`)
+
+### Remote Service URLs
+- `DOLPHIN_GPU_SERVER`: Dolphin GPU server URL (default: `http://kca-ai.kro.kr:8005`)
+- `REMOTE_OCR_SERVER`: Remote OCR server URL (default: `http://kca-ai.kro.kr:8005`)
+
+### Timeout Settings (seconds)
+- `REMOTE_OCR_HEALTH_TIMEOUT`: Remote OCR health check timeout (default: `5`)
+- `REMOTE_OCR_REQUEST_TIMEOUT`: Remote OCR request timeout (default: `30`)
+- `DOLPHIN_HEALTH_TIMEOUT`: Dolphin GPU health check timeout (default: `5`)
+- `DOLPHIN_INFERENCE_TIMEOUT`: Dolphin inference timeout (default: `60`)
+
+### OCR Default Settings
+- `DEFAULT_OCR_LANGUAGES`: Remote OCR default languages, comma-separated (default: `eng,kor`)
+- `DEFAULT_DOCLING_OCR_LANGUAGES`: Docling EasyOCR languages, comma-separated (default: `ko,en`)
+
+### PDF Processing Settings
+- `PDF_RENDER_DPI`: PDF to image DPI for OCR (default: `300`)
+  - Higher values improve OCR accuracy but increase processing time
+- `DOLPHIN_IMAGE_TARGET_SIZE`: Dolphin image target size in pixels (default: `896`)
+
+### GPU Server Settings (for gpu_server.py)
+- `GPU_SERVER_HOST`: GPU server host (default: `0.0.0.0`)
+- `GPU_SERVER_PORT`: GPU server port (default: `8001`)
+- `GPU_SERVER_LOG_LEVEL`: GPU server log level (default: `info`)
+- `DOLPHIN_MAX_LENGTH`: Dolphin max generation tokens (default: `4096`)
+- `DOLPHIN_TEMPERATURE`: Dolphin sampling temperature (default: `0.0`)
+- `DOLPHIN_USE_FP16`: Use FP16 on GPU - True/False (default: `True`)
+
+**Frontend (.env.local in root):**
+- `NEXT_PUBLIC_API_URL`: Backend URL (default: `http://localhost:8000`)
+
+## Dependencies
+
+### Backend Critical Dependencies
+
+- `docling>=2.57.0`: Core document parsing
+- `camelot-py==1.0.9`: PDF table extraction (requires `ghostscript` binary)
+- `mineru>=2.5.4`: Universal PDF parser (optional)
+- `transformers>=4.40.0`: For Dolphin/VLM models
+- `torch>=2.9.0`: Deep learning backend
+- `fastapi==0.115.0`, `uvicorn==0.32.0`: Web framework
+- `sqlalchemy==2.0.36`: ORM
+
+**Note:** MinerU and Dolphin are optional. Check availability via:
+```python
+from app.services.mineru_parser import MINERU_AVAILABLE
+from app.services.dolphin_remote import DOLPHIN_REMOTE_AVAILABLE
 ```
 
-**Text Styling:**
-```tsx
-// ✅ Correct - Uses theme tokens
-<p className="text-muted-foreground">Description text</p>
-<h1 className="text-foreground">Main heading</h1>
+### Frontend Critical Dependencies
 
-// ❌ Wrong - Hardcoded colors
-<p className="text-gray-600">Description text</p>
-<h1 className="text-black">Main heading</h1>
-```
+- `next==15.5.4`: App Router framework
+- `react-markdown`, `remark-gfm`, `rehype-raw`: Markdown rendering
+- `@radix-ui/*`: UI primitives (used by shadcn/ui)
 
-### 🔧 MCP Tools - Mandatory Usage
+## Testing Strategy
 
-**CRITICAL: Always use MCP tools when working with UI components and external libraries**
+**Manual Testing Workflow:**
+1. Start dev servers via `start-dev.ps1`
+2. Upload test document via frontend: http://localhost:3000/parse
+3. Select parsing options (strategy, OCR, table extraction)
+4. Verify output in `output/{doc_name}/` folder
+5. Check API logs in backend terminal window
 
-Failing to use MCP tools may result in outdated patterns, incorrect implementations, or inconsistent styling.
-
-#### 1. shadcn/ui MCP - Required for ALL UI Changes
-
-**Before creating or modifying any UI component**, you MUST:
-
-1. **Search for existing components:**
-   ```
-   Use: mcp__shadcn__search_items_in_registries
-   Purpose: Find if shadcn/ui already provides the component you need
-   ```
-
-2. **View component details:**
-   ```
-   Use: mcp__shadcn__view_items_in_registries
-   Purpose: See the full implementation and available props
-   ```
-
-3. **Get usage examples:**
-   ```
-   Use: mcp__shadcn__get_item_examples_from_registries
-   Purpose: See real-world usage patterns and best practices
-   ```
-
-**Examples:**
-
-```
-❌ WRONG: Manually creating a dialog component
-✅ CORRECT: Search for "dialog" using shadcn MCP, then add with examples
-
-❌ WRONG: Hardcoding a custom select dropdown
-✅ CORRECT: Use mcp__shadcn__search_items_in_registries to find "select" component
-
-❌ WRONG: Creating custom form inputs
-✅ CORRECT: Use shadcn MCP to add "form" and "input" components
-```
-
-#### 2. Context7 MCP - Required for Library Documentation
-
-**Before implementing features with external libraries**, you MUST:
-
-1. **Resolve the library ID:**
-   ```
-   Use: mcp__context7__resolve-library-id
-   Purpose: Get the correct Context7-compatible library identifier
-   ```
-
-2. **Fetch latest documentation:**
-   ```
-   Use: mcp__context7__get-library-docs
-   Purpose: Get up-to-date API documentation and usage patterns
-   ```
-
-**When to use Context7 MCP:**
-- Working with Next.js App Router features
-- Using React 19 features (Server Components, Actions, etc.)
-- Implementing FastAPI endpoints or middleware
-- Integrating Docling parsing features
-- Using react-markdown or other rendering libraries
-- Any time you're unsure about API usage
-
-**Examples:**
-
-```
-❌ WRONG: Implementing Next.js routing based on memory/assumptions
-✅ CORRECT: Use context7 MCP to get latest Next.js 15 App Router docs
-
-❌ WRONG: Guessing FastAPI async patterns
-✅ CORRECT: Use context7 MCP to fetch FastAPI documentation for async/await
-
-❌ WRONG: Using outdated react-markdown syntax
-✅ CORRECT: Use context7 MCP to get latest react-markdown API reference
-```
-
-#### Mandatory Workflow for UI Development
-
-**Step-by-step process:**
-
-1. **Plan** → Understand requirements
-2. **Search shadcn MCP** → Check if component exists
-3. **Get Context7 docs** → Verify latest library APIs (if using external libs)
-4. **Implement** → Use theme variables, never hardcode
-5. **Verify** → Ensure proper theme usage and component patterns
-
-**Example workflow for adding a data table:**
-
-```
-1. Search: mcp__shadcn__search_items_in_registries(query: "table")
-2. View: mcp__shadcn__view_items_in_registries(items: ["@shadcn/table"])
-3. Examples: mcp__shadcn__get_item_examples_from_registries(query: "table-demo")
-4. Docs (if needed): context7 resolve "tanstack/table" → get library docs
-5. Implement using discovered patterns with theme variables
-```
-
-## Configuration Files
-
-- `next.config.ts` - Next.js configuration (currently using defaults)
-- `tsconfig.json` - TypeScript compiler options with strict mode and path aliases
-- `eslint.config.mjs` - ESLint configuration with Next.js presets
-- `components.json` - shadcn/ui configuration and component registry
-- `postcss.config.mjs` - PostCSS configuration for Tailwind CSS 4
-
-## Development Workflow
-
-### Starting the Full Stack (PowerShell)
-
-To run the complete application, start both services:
-
-1. **Start Backend API** (Terminal 1 - PowerShell):
-   ```powershell
-   cd backend; python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   ```
-   - Runs on port 8000
-   - Auto-reloads on code changes
-   - Uses Docling library directly (no separate service needed)
-   - May take time on first document parse (downloads models on first run)
-
-2. **Start Frontend** (Terminal 2 - PowerShell):
-   ```powershell
-   npm run dev
-   ```
-   - Runs on port 3000
-   - Visit http://localhost:3000
-
-### Testing the API (PowerShell)
-
-Test endpoints using curl or Invoke-RestMethod in PowerShell:
-
-```powershell
-# Check API status
-curl http://localhost:8000/
-# or
-Invoke-RestMethod -Uri "http://localhost:8000/" -Method Get
-
-# List documents
-Invoke-RestMethod -Uri "http://localhost:8000/documents" -Method Get
-
-# Parse a PDF document (Camelot automatically used)
-$body = @{
-    filename = "sample.pdf"
-    options = @{
-        extract_tables = $true
-        save_to_output_folder = $true
-        output_format = "markdown"
-    }
-} | ConvertTo-Json
-
-Invoke-RestMethod -Uri "http://localhost:8000/parse" -Method Post -ContentType "application/json" -Body $body
-
-# Or simplest form (uses all defaults)
-$body = @{ filename = "sample.pdf" } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:8000/parse" -Method Post -ContentType "application/json" -Body $body
-
-# Parse with Picture Description (requires VLM dependencies)
-$body = @{
-    filename = "sample.pdf"
-    options = @{
-        do_picture_description = $true
-        picture_description_model = "smolvlm"  # or "granite"
-        save_to_output_folder = $true
-    }
-} | ConvertTo-Json
-Invoke-RestMethod -Uri "http://localhost:8000/parse" -Method Post -ContentType "application/json" -Body $body
-```
-
-## Development Notes
-
-- The development and build commands use Turbopack (`--turbopack` flag) for faster builds
-- React Server Components (RSC) are enabled by default in the App Router
-- The target ES version is ES2017
-- Playwright is available for end-to-end testing
-- Frontend is currently showing default Next.js page - needs UI implementation
-- Backend environment variables can be configured via `.env` file in `backend/` directory
+**Testing Different Parsers:**
+- Remote OCR: Enable "Remote OCR" toggle, select engine (tesseract/paddleocr/dolphin)
+- Dolphin: Select "Dolphin (AI-Powered)" strategy, adjust parsing level
+- MinerU: Select "MinerU (Universal)" strategy, set language
+- Camelot: Select "Camelot (Tables)" strategy, choose mode (lattice/stream/hybrid)
+- Docling: Default strategy (no special selection needed)
 
 ## Common Issues
 
-### Backend Issues
+### Backend Won't Start
 
-#### MinerU Model Setup (Critical)
-- **MinerU model weights not found** (`FileNotFoundError: yolo_v8_ft.pt`):
-  - **Cause**: MinerU requires downloading AI models (~2-3GB) before first use
-  - **Quick Fix**:
-    1. Run: `.\backend\setup_mineru.ps1` (easiest, interactive)
-    2. Or run: `mineru-models-download -m pipeline -s huggingface` (auto-download)
-    3. Or run: `python backend/download_mineru_models.py` (check status)
-  - **Detailed Guide**: See `backend/MINERU_SETUP.md` for complete instructions
-  - **Manual Download**: Download from [HuggingFace](https://huggingface.co/wanderkid/PDF-Extract-Kit) or [ModelScope](https://www.modelscope.cn/models/wanderkid/PDF-Extract-Kit)
-  - **Models Required**:
-    - Layout Detection Model (~400 MB)
-    - Formula Detection Model (yolo_v8_ft.pt, ~100 MB)
-    - Table Recognition Model (~200 MB)
-  - **One-time Setup**: Models are downloaded once and reused for all future parses
+- Check Python version (requires 3.9+)
+- Verify `backend/requirements.txt` installed: `pip install -r backend/requirements.txt`
+- Ensure `docu/` and `output/` folders exist (auto-created in `config.py`)
 
-#### Other Backend Issues
-- **Camelot not installed**: Run `pip install camelot-py[cv]` in the backend venv
-- **EasyOCR not installed**: Run `pip install easyocr` in the backend venv
-- **Model download on first run**: First document parse may take time as Docling downloads models
-- **Camelot unavailable**: Check API status endpoint (`GET /`) to verify Camelot is available
-  - If `camelot: false`, system will automatically fall back to Docling for PDFs
-- **CORS errors**: Verify `allow_origins` setting in `backend/app/main.py`
-- **File not found**: Ensure documents are placed in `/docu` folder
-- **Memory issues with large files**: Consider processing specific pages with `camelot_pages` option
-- **Unicode encoding errors on Windows**: Set `PYTHONIOENCODING=utf-8` before starting backend
-- **No tables found**: Try different `camelot_mode` values: "hybrid" (default), "lattice", "stream"
-- **Picture Description not working**: Install VLM dependencies with `pip install docling[vlm]`
-  - See `prompts/picture-description-guide.md` for detailed setup instructions
-  - Test with: `cd backend; .\test_picture_description.ps1`
+### MinerU/Dolphin Not Available
 
-## MCP Tools Usage Guide
+- MinerU is optional - check `MINERU_AVAILABLE` flag in code
+- Dolphin requires remote GPU server access - check `DOLPHIN_REMOTE_AVAILABLE`
+- Application degrades gracefully (uses Docling as fallback)
 
-This project has access to several MCP (Model Context Protocol) tools that should be used actively during development:
+### Camelot Import Errors
 
-### Available MCP Tools
+- Requires `ghostscript` binary installed on system (not Python package)
+- Windows: Install via Chocolatey or official installer
+- Check `CAMELOT_AVAILABLE` flag (auto-detected)
 
-1. **Sequential Thinking (`mcp__sequential-thinking__sequentialthinking`)**
-   - Use for complex problem-solving and multi-step tasks
-   - Helps break down problems into manageable steps
-   - Useful for planning implementation before coding
-   - **When to use**:
-     - Planning new features or refactoring
-     - Debugging complex issues
-     - Designing architecture changes
+### Database Locked Errors
 
-2. **Context7 (`mcp__context7__resolve-library-id`, `mcp__context7__get-library-docs`)**
-   - Retrieves up-to-date documentation for libraries
-   - **When to use**:
-     - Learning new FastAPI features
-     - Understanding Docling API parameters
-     - Checking Next.js 15 App Router patterns
-   - **Example**: Get latest FastAPI docs for async operations
+- SQLite `check_same_thread=False` already configured in `database.py`
+- If persists, delete `parsing_app.db` and restart (database auto-recreates)
 
-3. **shadcn/ui MCP Tools**
-   - `mcp__shadcn__search_items_in_registries` - Find components
-   - `mcp__shadcn__view_items_in_registries` - View component details
-   - `mcp__shadcn__get_item_examples_from_registries` - Get usage examples
-   - **When to use**: Adding UI components to the Next.js frontend
+## Code Style
 
-4. **Playwright MCP Tools**
-   - Browser automation for testing
-   - **When to use**: E2E testing of the complete document parsing flow
+- Backend: Follow PEP 8, use type hints where possible
+- Frontend: TypeScript strict mode, functional components only
+- Use existing logger instances (`logger = logging.getLogger(__name__)`)
+- Prefix log messages with emoji for visibility (e.g., `logger.info("📄 Parsing started")`)
 
-### Best Practices for MCP Usage
+## Remote GPU Server (Dolphin)
 
-1. **Use Sequential Thinking for Planning**
-   ```
-   Before implementing a new feature:
-   - Use sequential thinking to break down the task
-   - Identify dependencies and potential issues
-   - Create a step-by-step implementation plan
-   ```
+The GPU server is a **standalone FastAPI server** designed to run on a remote GPU machine.
 
-2. **Use Context7 for Documentation**
-   ```
-   When working with libraries:
-   - Resolve library ID first
-   - Fetch relevant documentation
-   - Apply latest best practices from docs
-   ```
+### Architecture:
+- **GPU Server:** `backend/gpu_server.py` - Runs Dolphin model inference on GPU
+- **Client:** `backend/app/services/dolphin_remote.py` - Calls GPU server via HTTP
+- **Default Server:** `http://kca-ai.kro.kr:8005` (Unified OCR Server)
 
-3. **Use shadcn/ui Tools for Frontend**
-   ```
-   When building UI:
-   - Search for components matching requirements
-   - View examples before implementing
-   - Follow patterns from official examples
-   ```
+### Setup (GPU Server Machine):
 
-### Example MCP Workflow
+See `backend/GPU_SERVER.md` for detailed setup instructions.
 
-**Scenario**: Implementing a new file upload feature
+**Quick Start:**
+```bash
+# Copy backend/gpu_server.py to your GPU server
+cd /path/to/gpu-server
+pip install fastapi uvicorn transformers torch pillow
 
-1. **Plan with Sequential Thinking**
-   - Break down: UI component → API endpoint → Docling integration → Response handling
-   - Identify: File validation, size limits, error handling
+# Download Dolphin model
+pip install huggingface-hub
+huggingface-cli download ByteDance/Dolphin-1.5 --local-dir ./dolphin_models/Dolphin-1.5
 
-2. **Get Documentation with Context7**
-   - FastAPI file upload best practices
-   - Docling API file handling parameters
+# Run GPU server
+python gpu_server.py --model-path ./dolphin_models/Dolphin-1.5 --port 8001
+```
 
-3. **Build UI with shadcn/ui**
-   - Search for "file upload" or "dropzone" components
-   - Get examples and implement with proper styling
+### Environment Variable (Backend):
+```bash
+# backend/.env
+DOLPHIN_GPU_SERVER=http://kca-ai.kro.kr:8005  # Unified OCR Server (default)
+# Or use your own GPU server:
+# DOLPHIN_GPU_SERVER=http://192.168.1.100:8001
+```
 
-4. **Test with Playwright** (optional)
-   - Automate file upload testing
-   - Verify parsing results in browser
+The backend automatically checks GPU server availability on startup. If unavailable, Dolphin parsing is disabled (graceful degradation).
+
+## Dolphin Integration Status
+
+**Current Phase:** Phase 5 (Testing) - Core implementation complete
+- **Architecture:** Remote GPU only (no local installation)
+- See `prompts/dolphin-integration-plan.md` for detailed integration plan
+- Implementation files: `backend/app/services/dolphin_remote.py`, `backend/app/services/dolphin_utils.py`
+- Frontend UI complete: `components/upload/ParsingOptions.tsx` has Dolphin strategy selector
+- **Remaining:** E2E testing and accuracy benchmarking vs MinerU
+
+**Important:** Local Dolphin parser (`dolphin_parser.py`) has been removed. Only remote GPU server is used.

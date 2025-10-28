@@ -14,6 +14,11 @@
 !.yarn/releases
 !.yarn/versions
 
+# package manager caches
+.npm/
+.eslintcache
+.stylelintcache
+
 # testing
 /coverage
 
@@ -35,7 +40,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # env files (can opt-in for committing if needed)
-.env*
+.env
 
 # vercel
 .vercel
@@ -43,6 +48,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# turbopack
+.turbo/
 
 # ============================================
 # Backend (Python/FastAPI)
@@ -53,14 +61,21 @@ backend/venv/
 backend/.venv/
 backend/env/
 backend/ENV/
+venv/
+.venv/
 
-# Python cache
+# Python cache (backend and root)
 backend/__pycache__/
 backend/**/__pycache__/
 backend/*.pyc
 backend/*.pyo
 backend/*.pyd
 backend/.Python
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
 
 # Distribution / packaging
 backend/.Python
@@ -116,6 +131,11 @@ backend/ENV/
 backend/env.bak/
 backend/venv.bak/
 
+# pip
+backend/pip-log.txt
+backend/pip-delete-this-directory.txt
+.pip_download_cache/
+
 # mypy
 backend/.mypy_cache/
 backend/.dmypy.json
@@ -128,14 +148,18 @@ backend/.pyre/
 # Project-specific
 # ============================================
 
-# Database files
+# Database files (root and backend)
 *.db
+*.db-*
 *.sqlite
 *.sqlite3
+*.sqlite3-*
 backend/app.db
 backend/*.db
 backend/*.sqlite
 backend/*.sqlite3
+parsing_app.db
+parsing_app.db-*
 
 # Output folder - ignore parsed documents
 /output/*
@@ -149,6 +173,15 @@ backend/*.sqlite3
 *.tmp
 *.temp
 *.log
+*.log.*
+
+# PowerShell transcripts
+PowerShell_transcript.*.txt
+
+# Test files and directories
+**/test_outputs/
+**/test_results/
+**/*_test_*/
 
 # ============================================
 # IDE / Editor
@@ -161,6 +194,14 @@ backend/*.sqlite3
 !.vscode/launch.json
 !.vscode/extensions.json
 *.code-workspace
+
+# Claude Code
+.claude/settings.local.json
+.claude/cache/
+.claude/*.local.*
+
+# MCP (Model Context Protocol)
+.mcp.local.json
 
 # PyCharm
 .idea/
@@ -193,8 +234,52 @@ ehthumbs.db
 Desktop.ini
 $RECYCLE.BIN/
 
+# Backup files
+*.bak
+*.backup
+*.old
+*~
+
 # ============================================
 # MinerU / Magic-PDF cache
 # ============================================
 backend/.magic_pdf/
 backend/magic-pdf.json
+
+# ============================================
+# External Libraries & Tools
+# ============================================
+
+# Poppler PDF utilities
+poppler/
+poppler-*/
+
+# ============================================
+# GPU Server & Remote Services
+# ============================================
+
+# Remote GPU server (may be separate repository)
+gpu_server/
+
+# ============================================
+# MCP & Testing Artifacts
+# ============================================
+
+# Playwright MCP screenshots and recordings
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# ============================================
+# Dolphin AI Parser (Removed - Remote Only)
+# ============================================
+
+# Dolphin local library (removed in favor of Remote GPU)
+dolphin_lib/
+
+# Dolphin model weights (removed - using Remote GPU)
+dolphin_models/
+
+# Dolphin test outputs
+backend/test_outputs/
+backend/dolphin_test_*/

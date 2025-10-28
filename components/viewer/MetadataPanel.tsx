@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import { Download, FileText, Table2 } from 'lucide-react';
+import { Download, FileText, Table2, Zap, Sparkles, ScanText } from 'lucide-react';
 import type { ParseResponse } from '@/lib/types';
 
 interface MetadataPanelProps {
@@ -128,6 +128,152 @@ export function MetadataPanel({ result, filename, className }: MetadataPanelProp
                   )}
                 </>
               )}
+            </div>
+          </div>
+        )}
+
+        <Separator />
+
+        {/* Parsing Metadata */}
+        {result.parsing_metadata && (
+          <div className="space-y-2">
+            <h4 className="font-semibold text-sm">Parsing Configuration</h4>
+            <div className="space-y-2">
+              {/* Main Parser */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Parser</span>
+                <Badge variant={
+                  result.parsing_metadata.parser_used === 'dolphin' || result.parsing_metadata.parser_used === 'dolphin_remote' ? 'default' :
+                  result.parsing_metadata.parser_used === 'mineru' ? 'secondary' :
+                  'outline'
+                } className="gap-1">
+                  {(result.parsing_metadata.parser_used === 'dolphin' || result.parsing_metadata.parser_used === 'dolphin_remote') && (
+                    <>
+                      <Zap className="h-3 w-3" />
+                      Dolphin (AI)
+                    </>
+                  )}
+                  {result.parsing_metadata.parser_used === 'mineru' && (
+                    <>
+                      <Sparkles className="h-3 w-3" />
+                      MinerU
+                    </>
+                  )}
+                  {result.parsing_metadata.parser_used === 'docling' && (
+                    <>
+                      <FileText className="h-3 w-3" />
+                      Docling
+                    </>
+                  )}
+                  {result.parsing_metadata.parser_used === 'remote_ocr' && (
+                    <>
+                      <ScanText className="h-3 w-3" />
+                      Remote OCR
+                    </>
+                  )}
+                  {result.parsing_metadata.parser_used === 'camelot' && (
+                    <>
+                      <Zap className="h-3 w-3" />
+                      Camelot
+                    </>
+                  )}
+                  {!['dolphin', 'dolphin_remote', 'mineru', 'docling', 'remote_ocr', 'camelot'].includes(result.parsing_metadata.parser_used) && result.parsing_metadata.parser_used}
+                </Badge>
+              </div>
+
+              {/* Table Parser */}
+              {result.parsing_metadata.table_parser &&
+               result.parsing_metadata.table_parser !== result.parsing_metadata.parser_used && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Table Parser</span>
+                  <Badge variant="outline" className="gap-1">
+                    {result.parsing_metadata.table_parser === 'camelot' && (
+                      <>
+                        <Zap className="h-3 w-3" />
+                        Camelot
+                      </>
+                    )}
+                    {result.parsing_metadata.table_parser === 'docling' && (
+                      <>
+                        <FileText className="h-3 w-3" />
+                        Docling
+                      </>
+                    )}
+                    {result.parsing_metadata.table_parser === 'mineru' && (
+                      <>
+                        <Sparkles className="h-3 w-3" />
+                        MinerU
+                      </>
+                    )}
+                  </Badge>
+                </div>
+              )}
+
+              {/* OCR Status */}
+              {result.parsing_metadata.ocr_enabled && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">OCR</span>
+                  <Badge variant="secondary">Enabled</Badge>
+                </div>
+              )}
+
+              {/* Camelot Mode */}
+              {result.parsing_metadata.camelot_mode && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Camelot Mode</span>
+                  <Badge variant="outline">
+                    {result.parsing_metadata.camelot_mode}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Dolphin Parsing Level */}
+              {result.parsing_metadata.dolphin_parsing_level && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Parsing Level</span>
+                  <Badge variant="outline">
+                    {result.parsing_metadata.dolphin_parsing_level}
+                  </Badge>
+                </div>
+              )}
+
+              {/* MinerU Language */}
+              {result.parsing_metadata.mineru_lang && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Language</span>
+                  <Badge variant="outline">
+                    {result.parsing_metadata.mineru_lang === 'ko' && '🇰🇷 Korean'}
+                    {result.parsing_metadata.mineru_lang === 'zh' && '🇨🇳 Chinese'}
+                    {result.parsing_metadata.mineru_lang === 'en' && '🇺🇸 English'}
+                    {result.parsing_metadata.mineru_lang === 'ja' && '🇯🇵 Japanese'}
+                    {result.parsing_metadata.mineru_lang === 'auto' && '🌐 Auto'}
+                  </Badge>
+                </div>
+              )}
+
+              {/* Picture Description */}
+              {result.parsing_metadata.picture_description_enabled && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Picture Description</span>
+                  <Badge variant="secondary">VLM Enabled</Badge>
+                </div>
+              )}
+
+              {/* Auto Image Analysis */}
+              {result.parsing_metadata.auto_image_analysis_enabled && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Auto Image Analysis</span>
+                  <Badge variant="secondary">Smart Detection</Badge>
+                </div>
+              )}
+
+              {/* Output Format */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Output Format</span>
+                <Badge variant="outline">
+                  {result.parsing_metadata.output_format.toUpperCase()}
+                </Badge>
+              </div>
             </div>
           </div>
         )}

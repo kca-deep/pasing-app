@@ -56,7 +56,7 @@ export async function uploadFile(file: File): Promise<{
 }
 
 /**
- * Parse a document using the FastAPI backend
+ * Parse a document using the FastAPI backend (synchronous)
  * @param request - Parse request with filename and options
  * @returns Parse response with content and metadata
  */
@@ -80,6 +80,60 @@ export async function parseDocument(request: ParseRequest): Promise<ParseRespons
 }
 
 /**
+ * Start asynchronous document parsing job
+ * @param request - Parse request with filename and options
+ * @returns Job information with job_id
+ */
+export async function parseDocumentAsync(request: ParseRequest): Promise<{
+  success: boolean;
+  job_id: string;
+  filename: string;
+  message: string;
+}> {
+  const response = await fetch(`${API_BASE_URL}/parse/async`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(errorData.detail || errorData.error || `Failed to start parsing: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get parsing job status and progress
+ * @param jobId - Job identifier
+ * @returns Job progress information
+ */
+export async function getParsingStatus(jobId: string): Promise<{
+  job_id: string;
+  filename: string;
+  status: 'queued' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  result: ParseResponse | null;
+  error: string | null;
+}> {
+  const response = await fetch(`${API_BASE_URL}/parse/status/${jobId}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(errorData.detail || errorData.error || `Failed to get status: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Get list of all parsed documents
  * @returns List of parsed documents with metadata
  */
@@ -92,6 +146,18 @@ export async function getParsedDocuments(): Promise<{
     preview: string;
     table_count: number;
     output_dir: string;
+    parsing_metadata?: {
+      parser_used: string;
+      table_parser?: string;
+      ocr_enabled: boolean;
+      ocr_engine?: string;
+      output_format: string;
+      camelot_mode?: string;
+      dolphin_parsing_level?: string;
+      mineru_lang?: string;
+      picture_description_enabled: boolean;
+      auto_image_analysis_enabled: boolean;
+    };
   }>;
 }> {
   const response = await fetch(`${API_BASE_URL}/parsed-documents`);

@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
-import { FileText, Upload, Clock, Table2, ArrowRight, FileIcon, Sparkles } from 'lucide-react';
+import { FileText, Upload, Clock, Table2, ArrowRight, FileIcon, Sparkles, Zap, ScanText } from 'lucide-react';
 import { getParsedDocuments } from '@/lib/api';
 
 interface ParsedDocument {
@@ -18,6 +18,18 @@ interface ParsedDocument {
   preview: string;
   table_count: number;
   output_dir: string;
+  parsing_metadata?: {
+    parser_used: string;
+    table_parser?: string;
+    ocr_enabled: boolean;
+    ocr_engine?: string;
+    output_format: string;
+    camelot_mode?: string;
+    dolphin_parsing_level?: string;
+    mineru_lang?: string;
+    picture_description_enabled: boolean;
+    auto_image_analysis_enabled: boolean;
+  };
 }
 
 export default function Home() {
@@ -49,6 +61,21 @@ export default function Home() {
       hour: '2-digit',
       minute: '2-digit',
     }).format(date);
+  };
+
+  const getParserBadge = (parser: string) => {
+    switch (parser) {
+      case 'dolphin':
+      case 'dolphin_remote':
+        return { icon: Zap, label: 'Dolphin (AI)', variant: 'default' as const };
+      case 'mineru':
+        return { icon: Sparkles, label: 'MinerU', variant: 'secondary' as const };
+      case 'remote_ocr':
+        return { icon: ScanText, label: 'Remote OCR', variant: 'secondary' as const };
+      case 'docling':
+      default:
+        return { icon: FileText, label: 'Docling', variant: 'outline' as const };
+    }
   };
 
   return (
@@ -214,6 +241,19 @@ export default function Home() {
 
                     {/* Metadata */}
                     <div className="flex gap-2 flex-wrap">
+                      {/* Parsing Strategy Badge */}
+                      {doc.parsing_metadata && (() => {
+                        const { icon: Icon, label, variant } = getParserBadge(doc.parsing_metadata.parser_used);
+                        return (
+                          <Badge
+                            variant={variant}
+                            className="gap-1 transition-all group-hover:scale-105"
+                          >
+                            <Icon className="h-3 w-3" />
+                            {label}
+                          </Badge>
+                        );
+                      })()}
                       <Badge variant="secondary" className="gap-1 transition-all group-hover:scale-105">
                         <FileText className="h-3 w-3" />
                         {doc.size_kb} KB
