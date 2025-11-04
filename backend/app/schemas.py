@@ -166,3 +166,31 @@ class DocumentDetailSchema(DocumentSchema):
     pictures: List[PictureSchema] = []
 
     model_config = ConfigDict(from_attributes=True)
+
+
+# Dify schemas
+class DifyConfigSchema(BaseModel):
+    """Dify configuration schema"""
+    id: int
+    api_key: str
+    base_url: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DifyUploadLogSchema(BaseModel):
+    """Dify upload log schema"""
+    id: int
+    dataset_id: str
+    dataset_name: Optional[str] = None
+    document_path: str
+    document_name: str
+    dify_document_id: Optional[str] = None
+    batch_id: Optional[str] = None
+    indexing_status: str
+    uploaded_at: datetime
+    completed_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)

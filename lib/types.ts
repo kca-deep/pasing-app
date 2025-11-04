@@ -114,3 +114,84 @@ export interface TableData {
   };
   summary?: string;
 }
+
+// Dify Integration Types
+export interface DifyConfig {
+  api_key: string
+  base_url: string
+}
+
+export interface DifyDataset {
+  id: string
+  name: string
+  description?: string
+  document_count: number
+  word_count: number
+  created_at: string
+}
+
+export interface ParsedDocument {
+  // File info (for Dify upload)
+  path: string
+  name: string
+  size: number
+  created_at: string
+
+  // Database metadata
+  id?: number
+  filename?: string
+  file_extension?: string
+  file_size?: number  // Original file size in bytes
+  total_pages?: number
+  parsing_status?: string
+  parsing_strategy?: string
+  last_parsed_at?: string  // ISO 8601 format
+
+  // Aggregated counts
+  chunk_count: number
+  table_count: number
+  picture_count: number
+}
+
+export interface UploadRequest {
+  dataset_id: string
+  document_path: string
+  document_name?: string
+  indexing_technique?: string
+}
+
+export interface UploadResponse {
+  document_id: string
+  batch_id: string
+  indexing_status: 'waiting' | 'indexing' | 'completed' | 'error'
+  success: boolean
+}
+
+export interface IndexingStatus {
+  id: string
+  indexing_status: 'waiting' | 'indexing' | 'completed' | 'error'
+  completed_segments: number
+  total_segments: number
+  processing_started_at?: string
+  completed_at?: string
+  error?: string
+}
+
+export interface DifyUploadLog {
+  id: number
+  dataset_id: string
+  dataset_name: string
+  document_name: string
+  indexing_status: string
+  uploaded_at: string
+  completed_at?: string
+}
+
+export interface DocumentUploadStatus {
+  path: string
+  name: string
+  status: 'waiting' | 'uploading' | 'completed' | 'error'
+  progress: number
+  error?: string
+  document_id?: string
+}

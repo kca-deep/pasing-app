@@ -24,8 +24,13 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from '@/components/ui/radio-group';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import type { ParseOptions } from '@/lib/types';
-import { Sparkles, Zap, FileText, ScanText, Check, ChevronsUpDown } from 'lucide-react';
+import { Sparkles, Zap, FileText, ScanText, Check, ChevronsUpDown, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ParsingOptionsProps {
@@ -90,6 +95,7 @@ const strategies = [
 
 export function ParsingOptions({ options, onOptionsChange }: ParsingOptionsProps) {
   const [open, setOpen] = useState(false);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const updateOption = <K extends keyof ParseOptions>(key: K, value: ParseOptions[K]) => {
     onOptionsChange({ ...options, [key]: value });
@@ -254,11 +260,21 @@ export function ParsingOptions({ options, onOptionsChange }: ParsingOptionsProps
       </Card>
 
       {/* Strategy-Specific Options */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Advanced Options</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+        <Card>
+          <CollapsibleTrigger asChild>
+            <CardHeader className="cursor-pointer hover:bg-accent/5 transition-colors">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>Advanced Options</span>
+                <ChevronDown className={cn(
+                  "h-4 w-4 transition-transform duration-200",
+                  advancedOpen && "transform rotate-180"
+                )} />
+              </CardTitle>
+            </CardHeader>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="space-y-6 pt-0">
           {/* Remote OCR-specific options */}
           {currentStrategy === 'remote_ocr' && (
             <>
@@ -708,8 +724,10 @@ export function ParsingOptions({ options, onOptionsChange }: ParsingOptionsProps
               />
             </div>
           </div>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </CollapsibleContent>
+        </Card>
+      </Collapsible>
     </div>
   );
 }

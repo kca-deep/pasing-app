@@ -100,6 +100,53 @@ def get_document_with_counts(db: Session, document_id: int) -> Optional[dict]:
     }
 
 
+def list_documents_with_counts(
+    db: Session,
+    skip: int = 0,
+    limit: int = 100,
+    status: Optional[str] = None,
+    order_by: str = "last_parsed_at"
+) -> List[dict]:
+    """List all documents with aggregated counts of chunks, tables, and pictures."""
+    query = db.query(
+        db_models.Document,
+        func.count(db_models.Chunk.id.distinct()).label('chunk_count'),
+        func.count(db_models.Table.id.distinct()).label('table_count'),
+        func.count(db_models.Picture.id.distinct()).label('picture_count')
+    ).outerjoin(
+        db_models.Chunk, db_models.Document.id == db_models.Chunk.document_id
+    ).outerjoin(
+        db_models.Table, db_models.Document.id == db_models.Table.document_id
+    ).outerjoin(
+        db_models.Picture, db_models.Document.id == db_models.Picture.document_id
+    ).group_by(db_models.Document.id)
+
+    if status:
+        query = query.filter(db_models.Document.parsing_status == status)
+
+    # Order by specified field (default: last_parsed_at descending)
+    if order_by == "last_parsed_at":
+        query = query.order_by(db_models.Document.last_parsed_at.desc().nullslast())
+    elif order_by == "created_at":
+        query = query.order_by(db_models.Document.created_at.desc())
+    elif order_by == "filename":
+        query = query.order_by(db_models.Document.filename.asc())
+
+    results = query.offset(skip).limit(limit).all()
+
+    # Convert to list of dicts
+    documents_with_counts = []
+    for document, chunk_count, table_count, picture_count in results:
+        documents_with_counts.append({
+            "document": document,
+            "chunk_count": chunk_count or 0,
+            "table_count": table_count or 0,
+            "picture_count": picture_count or 0,
+        })
+
+    return documents_with_counts
+
+
 # ===== Chunk CRUD =====
 
 def create_chunk(db: Session, chunk: schemas.ChunkCreate) -> db_models.Chunk:
@@ -239,3 +286,93 @@ def get_pictures_by_document_id(db: Session, document_id: int) -> List[db_models
     return db.query(db_models.Picture).filter(
         db_models.Picture.document_id == document_id
     ).all()
+
+
+# ===== Dify CRUD =====
+
+def get_dify_config(db: Session) -> Optional[db_models.DifyConfig]:
+    """Get the most recent Dify configuration."""
+    return db.query(db_models.DifyConfig).order_by(
+        db_models.DifyConfig.updated_at.desc()
+    ).first()
+
+
+def create_or_update_dify_config(
+    db: Session,
+    api_key: str,
+    base_url: str
+) -> db_models.DifyConfig:
+    """Create or update Dify configuration."""
+    config = get_dify_config(db)
+
+    if config:
+        # Update existing config
+        config.api_key = api_key
+        config.base_url = base_url
+        config.updated_at = datetime.utcnow()
+    else:
+        # Create new config
+        config = db_models.DifyConfig(
+            api_key=api_key,
+            base_url=base_url
+        )
+        db.add(config)
+
+    db.commit()
+    db.refresh(config)
+    return config
+
+
+def create_upload_log(
+    db: Session,
+    dataset_id: str,
+    dataset_name: Optional[str],
+    document_path: str,
+    document_name: str,
+    dify_document_id: Optional[str] = None,
+    batch_id: Optional[str] = None
+) -> db_models.DifyUploadLog:
+    """Create a new upload log."""
+    log = db_models.DifyUploadLog(
+        dataset_id=dataset_id,
+        dataset_name=dataset_name,
+        document_path=document_path,
+        document_name=document_name,
+        dify_document_id=dify_document_id,
+        batch_id=batch_id,
+        indexing_status="waiting"
+    )
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+def update_upload_log(
+    db: Session,
+    log_id: int,
+    indexing_status: str,
+    completed_at: Optional[datetime] = None
+) -> Optional[db_models.DifyUploadLog]:
+    """Update an upload log."""
+    log = db.query(db_models.DifyUploadLog).filter(
+        db_models.DifyUploadLog.id == log_id
+    ).first()
+
+    if not log:
+        return None
+
+    log.indexing_status = indexing_status
+    if completed_at:
+        log.completed_at = completed_at
+
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+def get_upload_history(db: Session, limit: int = 50) -> List[db_models.DifyUploadLog]:
+    """Get upload history (most recent first)."""
+    return db.query(db_models.DifyUploadLog).order_by(
+        db_models.DifyUploadLog.uploaded_at.desc()
+    ).limit(limit).all()

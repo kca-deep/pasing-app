@@ -1,6 +1,17 @@
 // API Client for FastAPI Backend
 
-import type { DocumentInfo, ParseRequest, ParseResponse } from './types';
+import type {
+  DocumentInfo,
+  ParseRequest,
+  ParseResponse,
+  DifyConfig,
+  DifyDataset,
+  ParsedDocument,
+  UploadRequest,
+  UploadResponse,
+  IndexingStatus,
+  DifyUploadLog
+} from './types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -196,4 +207,154 @@ export async function downloadFile(filename: string): Promise<Blob> {
     throw new Error(`Download failed: ${response.statusText}`);
   }
   return response.blob();
+}
+
+// ===== Dify Integration API Functions =====
+
+/**
+ * Get stored Dify configuration
+ * @returns Dify configuration with API key and base URL
+ */
+export async function getDifyConfig(): Promise<DifyConfig> {
+  const response = await fetch(`${API_BASE_URL}/dify/config`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to get Dify config: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Save or update Dify configuration
+ * @param config - Dify configuration with API key and base URL
+ * @returns Success status
+ */
+export async function saveDifyConfig(config: DifyConfig): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/dify/config`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(config),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to save Dify config: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Test connection to Dify API
+ * @param config - Dify configuration to test
+ * @returns Connection test result
+ */
+export async function testDifyConnection(config: DifyConfig): Promise<{ success: boolean; message: string }> {
+  const response = await fetch(`${API_BASE_URL}/dify/test-connection`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(config),
+    signal: AbortSignal.timeout(30000), // 30 seconds timeout
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Connection test failed: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * List all datasets in Dify Knowledge Base
+ * @param page - Page number (1-indexed)
+ * @param limit - Number of datasets per page
+ * @returns List of Dify datasets
+ */
+export async function listDatasets(page: number = 1, limit: number = 20): Promise<DifyDataset[]> {
+  const response = await fetch(`${API_BASE_URL}/dify/datasets?page=${page}&limit=${limit}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to list datasets: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * List all parsed documents in the output folder
+ * @returns List of parsed documents with database metadata
+ */
+export async function listParsedDocuments(): Promise<ParsedDocument[]> {
+  const response = await fetch(`${API_BASE_URL}/dify/parsed-documents`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to list parsed documents: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Upload a parsed document to Dify Knowledge Base
+ * @param request - Upload request with dataset ID, document path, and name
+ * @returns Upload response with document ID and batch ID
+ */
+export async function uploadToDify(request: UploadRequest): Promise<UploadResponse> {
+  const response = await fetch(`${API_BASE_URL}/dify/upload`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+    signal: AbortSignal.timeout(300000), // 5 minutes timeout
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to upload document: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Check indexing status of a document batch
+ * @param dataset_id - Dataset ID
+ * @param batch_id - Batch ID from upload response
+ * @returns Indexing status with progress
+ */
+export async function getIndexingStatus(dataset_id: string, batch_id: string): Promise<IndexingStatus> {
+  const response = await fetch(`${API_BASE_URL}/dify/status/${encodeURIComponent(dataset_id)}/${encodeURIComponent(batch_id)}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to get indexing status: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Get upload history
+ * @param limit - Maximum number of records to return
+ * @returns List of upload logs
+ */
+export async function getUploadHistory(limit: number = 50): Promise<DifyUploadLog[]> {
+  const response = await fetch(`${API_BASE_URL}/dify/upload-history?limit=${limit}`);
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `Failed to get upload history: ${response.statusText}`);
+  }
+
+  return response.json();
 }

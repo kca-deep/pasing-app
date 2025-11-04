@@ -21,7 +21,7 @@ from app.config import (
 )
 
 # Import routers
-from app.api import health, documents, parsing, results, database, async_parsing
+from app.api import health, documents, parsing, results, database, async_parsing, dify
 
 # Import database initialization
 from app.init_db import init_db
@@ -69,6 +69,7 @@ app.include_router(parsing.router, tags=["Parsing"])
 app.include_router(async_parsing.router, tags=["Async Parsing"])
 app.include_router(results.router, tags=["Results"])
 app.include_router(database.router, tags=["Database"])
+app.include_router(dify.router, tags=["Dify"])
 
 
 if __name__ == "__main__":

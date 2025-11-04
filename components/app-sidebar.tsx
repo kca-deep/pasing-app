@@ -7,9 +7,11 @@ import {
   Home,
   Upload,
   FileText,
-  Settings,
   ChevronUp,
   User2,
+  Database,
+  PanelLeftClose,
+  PanelLeft,
 } from 'lucide-react';
 
 import {
@@ -23,6 +25,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import {
   DropdownMenu,
@@ -44,13 +47,19 @@ const items = [
     url: '/parse',
     icon: Upload,
   },
+  {
+    title: 'Dify Upload',
+    url: '/dify',
+    icon: Database,
+  },
 ];
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { open, toggleSidebar } = useSidebar();
 
   return (
-    <Sidebar>
+    <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -64,6 +73,23 @@ export function AppSidebar() {
                   <span className="text-xs">RAG Optimized</span>
                 </div>
               </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              className="w-full justify-start"
+              tooltip={open ? 'Collapse sidebar' : 'Expand sidebar'}
+              onClick={toggleSidebar}
+            >
+              {open ? (
+                <>
+                  <PanelLeftClose className="size-4" />
+                  <span>Collapse</span>
+                </>
+              ) : (
+                <PanelLeft className="size-4" />
+              )}
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -91,8 +117,8 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <div className="flex items-center justify-between px-2 py-1.5">
-                  <span className="text-sm">Theme</span>
+                <div className="flex items-center justify-between w-full group-data-[collapsible=icon]:justify-center px-2 py-1.5">
+                  <span className="text-sm group-data-[collapsible=icon]:hidden">Theme</span>
                   <ThemeToggle />
                 </div>
               </SidebarMenuItem>

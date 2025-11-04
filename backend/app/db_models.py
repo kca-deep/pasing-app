@@ -180,3 +180,46 @@ class Picture(Base):
 
     def __repr__(self):
         return f"<Picture(id={self.id}, picture_id='{self.picture_id}', area={self.area})>"
+
+
+class DifyConfig(Base):
+    """
+    Dify API configuration table.
+    Stores Dify API key and base URL.
+    """
+    __tablename__ = "dify_config"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    api_key = Column(String, nullable=False)
+    base_url = Column(String, nullable=False, default="https://api.dify.ai")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<DifyConfig(id={self.id}, base_url='{self.base_url}')>"
+
+
+class DifyUploadLog(Base):
+    """
+    Dify upload log table.
+    Tracks all document uploads to Dify.
+    """
+    __tablename__ = "dify_upload_logs"
+    __table_args__ = (
+        Index("idx_dify_upload_logs_dataset_id", "dataset_id"),
+        Index("idx_dify_upload_logs_uploaded_at", "uploaded_at"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_id = Column(String, nullable=False)
+    dataset_name = Column(String)
+    document_path = Column(String, nullable=False)
+    document_name = Column(String, nullable=False)
+    dify_document_id = Column(String)  # Dify document ID
+    batch_id = Column(String)  # Dify batch ID
+    indexing_status = Column(String, default="waiting")  # waiting, parsing, cleaning, splitting, indexing, completed, error
+    uploaded_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+
+    def __repr__(self):
+        return f"<DifyUploadLog(id={self.id}, document_name='{self.document_name}', status='{self.indexing_status}')>"

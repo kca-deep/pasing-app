@@ -37,104 +37,104 @@ def _map_strategy_to_parser(strategy: str) -> str:
 
 @router.get("/parsed-documents")
 async def list_parsed_documents(db: Session = Depends(get_db)):
-    """List all parsed documents in the output folder"""
+    """List all parsed documents from database with file metadata enrichment"""
     logger.info("=" * 80)
-    logger.info("🔵 RESULTS.PY CODE VERSION: 2024-10-27-v3 WITH DATABASE FALLBACK")
+    logger.info("🔵 RESULTS.PY CODE VERSION: 2024-10-29-v4 DATABASE-FIRST WITH FILE ENRICHMENT")
     logger.info("=" * 80)
     try:
+        # Query documents from database with counts (completed status only)
+        db_documents = crud.list_documents_with_counts(
+            db,
+            limit=100,
+            status="completed",
+            order_by="last_parsed_at"
+        )
+
+        logger.info(f"📊 Found {len(db_documents)} completed documents in database")
+
         parsed_docs = []
 
-        # Scan output folder for parsed documents
-        if OUTPUT_FOLDER.exists():
-            for doc_dir in OUTPUT_FOLDER.iterdir():
-                if doc_dir.is_dir():
-                    content_file = doc_dir / "content.md"
-                    if content_file.exists():
-                        # Get file stats
-                        stat = content_file.stat()
+        for doc_info in db_documents:
+            document = doc_info["document"]
+            chunk_count = doc_info["chunk_count"]
+            table_count = doc_info["table_count"]
+            picture_count = doc_info["picture_count"]
 
+            # Get file preview if content file exists
+            preview = ""
+            content_size_kb = 0
+
+            if document.content_md_path:
+                content_file = Path(document.content_md_path)
+                if content_file.exists():
+                    try:
                         # Read first few lines for preview
                         with open(content_file, 'r', encoding='utf-8') as f:
                             content = f.read(500)  # Read first 500 chars
                             preview = content[:200] + "..." if len(content) > 200 else content
 
-                        # Check for tables
-                        tables_dir = doc_dir / "tables"
-                        table_count = 0
-                        if tables_dir.exists():
-                            table_count = len(list(tables_dir.glob("table_*.json")))
+                        # Get actual file size
+                        stat = content_file.stat()
+                        content_size_kb = round(stat.st_size / 1024, 2)
+                    except Exception as e:
+                        logger.error(f"Error reading content file for {document.filename}: {str(e)}")
 
-                        # Load parsing metadata if available
-                        parsing_metadata = None
-                        debug_info = {}
+            # Load parsing metadata if available
+            parsing_metadata = None
+            if document.output_folder:
+                metadata_file = Path(document.output_folder) / "metadata.json"
+                if metadata_file.exists():
+                    try:
+                        with open(metadata_file, 'r', encoding='utf-8') as mf:
+                            parsing_metadata = json.load(mf)
+                    except Exception as e:
+                        logger.error(f"Error loading metadata for {document.filename}: {str(e)}")
 
-                        metadata_file = doc_dir / "metadata.json"
-                        debug_info["metadata_file_path"] = str(metadata_file)
-                        debug_info["metadata_file_exists"] = metadata_file.exists()
+            # If no metadata file, generate from database
+            if not parsing_metadata and document.parsing_strategy:
+                parsing_metadata = {
+                    "parser_used": _map_strategy_to_parser(document.parsing_strategy),
+                    "table_parser": None,
+                    "ocr_enabled": False,
+                    "ocr_engine": None,
+                    "output_format": "markdown",
+                    "picture_description_enabled": False,
+                    "auto_image_analysis_enabled": False
+                }
 
-                        if metadata_file.exists():
-                            try:
-                                with open(metadata_file, 'r', encoding='utf-8') as mf:
-                                    metadata_dict = json.load(mf)
-                                    parsing_metadata = metadata_dict  # Keep as dict for JSON response
-                                debug_info["metadata_source"] = "file"
-                            except Exception as e:
-                                logger.error(f"Error loading metadata for {doc_dir.name}: {str(e)}")
-                                debug_info["file_read_error"] = str(e)
-                        else:
-                            # Fallback to database if metadata.json doesn't exist
-                            # Try to find document in database by matching output folder name
-                            debug_info["metadata_source"] = "database_fallback"
-                            try:
-                                logger.info(f"🔍 Trying to load metadata from database for {doc_dir.name}")
-                                db_doc = None
-                                debug_info["extensions_tried"] = []
+            # Build response object
+            parsed_docs.append({
+                # Primary display fields
+                "filename": document.filename,  # Original filename as title
+                "document_name": Path(document.filename).stem,  # Name without extension
 
-                                # Try common extensions
-                                for ext in ['.pdf', '.docx', '.pptx', '.html', '.txt']:
-                                    filename_to_try = doc_dir.name + ext
-                                    debug_info["extensions_tried"].append(filename_to_try)
-                                    db_doc = crud.get_document_by_filename(db, filename_to_try)
-                                    if db_doc:
-                                        logger.info(f"✓ Found document in DB with extension {ext}")
-                                        debug_info["db_document_found"] = True
-                                        debug_info["db_filename"] = db_doc.filename
-                                        debug_info["db_strategy"] = db_doc.parsing_strategy
-                                        break
+                # Database metadata
+                "id": document.id,
+                "file_extension": document.file_extension,
+                "file_size": document.file_size,  # Original file size in bytes
+                "total_pages": document.total_pages,
+                "parsing_status": document.parsing_status,
+                "parsing_strategy": document.parsing_strategy,
+                "created_at": document.created_at.timestamp() if document.created_at else None,
+                "updated_at": document.updated_at.timestamp() if document.updated_at else None,
+                "last_parsed_at": document.last_parsed_at.timestamp() if document.last_parsed_at else None,
+                "parsed_at": document.last_parsed_at.timestamp() if document.last_parsed_at else document.updated_at.timestamp(),
 
-                                if db_doc and db_doc.parsing_strategy:
-                                    # Create metadata from database info
-                                    parsing_metadata = {
-                                        "parser_used": _map_strategy_to_parser(db_doc.parsing_strategy),
-                                        "table_parser": None,
-                                        "ocr_enabled": False,
-                                        "ocr_engine": None,
-                                        "output_format": "markdown",
-                                        "picture_description_enabled": False,
-                                        "auto_image_analysis_enabled": False
-                                    }
-                                    debug_info["metadata_generated"] = True
-                                    logger.info(f"📊 Generated metadata from database for {doc_dir.name}: {parsing_metadata}")
-                                else:
-                                    debug_info["db_document_found"] = False
-                                    logger.warning(f"⚠️ Document not found in DB or no strategy for {doc_dir.name}")
-                            except Exception as e:
-                                debug_info["db_error"] = str(e)
-                                logger.error(f"❌ Error loading metadata from DB for {doc_dir.name}: {str(e)}", exc_info=True)
+                # Aggregated counts from database
+                "chunk_count": chunk_count,
+                "table_count": table_count,
+                "picture_count": picture_count,
 
-                        parsed_docs.append({
-                            "document_name": doc_dir.name,
-                            "parsed_at": stat.st_mtime,
-                            "size_kb": round(stat.st_size / 1024, 2),
-                            "preview": preview,
-                            "table_count": table_count,
-                            "output_dir": str(doc_dir),
-                            "parsing_metadata": parsing_metadata,
-                            "_debug": debug_info  # Debug information
-                        })
+                # File metadata
+                "size_kb": content_size_kb,  # Parsed content file size
+                "preview": preview,
+                "output_dir": document.output_folder,
 
-        # Sort by parsed time (most recent first)
-        parsed_docs.sort(key=lambda x: x["parsed_at"], reverse=True)
+                # Parsing metadata
+                "parsing_metadata": parsing_metadata,
+            })
+
+        logger.info(f"✅ Returning {len(parsed_docs)} documents with enriched metadata")
 
         return {
             "total": len(parsed_docs),

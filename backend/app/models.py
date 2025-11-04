@@ -135,3 +135,69 @@ class ParseResponse(BaseModel):
 
     # Parsing metadata (v2.3.0+)
     parsing_metadata: Optional[ParsingMetadata] = None  # Details about parsing options used
+
+
+# ===== Dify Integration Models =====
+
+class DifyConfigModel(BaseModel):
+    """Dify API configuration"""
+    api_key: str
+    base_url: str = "https://api.dify.ai"
+
+
+class DifyDataset(BaseModel):
+    """Dify Dataset information"""
+    id: str
+    name: str
+    description: Optional[str] = None
+    document_count: int = 0
+    word_count: int = 0
+    created_at: int  # Unix timestamp
+
+
+class DifyUploadRequest(BaseModel):
+    """Request model for uploading document to Dify"""
+    dataset_id: str
+    document_path: str
+    document_name: str
+    indexing_technique: str = "high_quality"
+
+
+class DifyUploadResponse(BaseModel):
+    """Response model for document upload"""
+    document_id: str
+    batch: str
+    indexing_status: str
+    success: bool
+
+
+class ParsedDocumentInfo(BaseModel):
+    """Information about a parsed document with database metadata"""
+    # File info (for Dify upload)
+    path: str
+    name: str
+    size: int  # bytes
+    created_at: str  # ISO 8601 format
+
+    # Database metadata
+    id: Optional[int] = None
+    filename: Optional[str] = None
+    file_extension: Optional[str] = None
+    file_size: Optional[int] = None  # Original file size in bytes
+    total_pages: Optional[int] = None
+    parsing_status: Optional[str] = None
+    parsing_strategy: Optional[str] = None
+    last_parsed_at: Optional[str] = None  # ISO 8601 format
+
+    # Aggregated counts
+    chunk_count: int = 0
+    table_count: int = 0
+    picture_count: int = 0
+
+
+class IndexingStatusResponse(BaseModel):
+    """Response model for indexing status check"""
+    id: str
+    indexing_status: str  # "waiting", "parsing", "cleaning", "splitting", "indexing", "completed", "error"
+    completed_segments: int = 0
+    total_segments: int = 0
