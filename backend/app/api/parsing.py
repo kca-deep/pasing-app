@@ -29,6 +29,11 @@ from app.table_utils import (
 )
 from app.database import get_db
 from app import crud, schemas
+from app.utils.parsing_db import (
+    create_or_update_document_record,
+    save_parsing_success,
+    save_parsing_failure
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,6 +45,7 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
     start_time = time.time()
     db_document = None
     warnings = []  # Collect warnings for user
+    will_use_camelot = False  # Initialize to avoid NameError in non-Docling paths
 
     try:
         file_path = DOCU_FOLDER / request.filename
@@ -48,33 +54,8 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
 
-        # Create Document record in database (status=processing)
-        try:
-            doc_create = schemas.DocumentCreate(
-                filename=request.filename,
-                original_path=str(file_path.absolute()),
-                file_size=file_path.stat().st_size,
-                file_extension=file_path.suffix.lower(),
-                parsing_status="processing"
-            )
-
-            # Check if document already exists
-            existing_doc = crud.get_document_by_filename(db, request.filename)
-            if existing_doc:
-                # Update existing document
-                db_document = existing_doc
-                crud.update_document(db, existing_doc.id, schemas.DocumentUpdate(
-                    parsing_status="processing",
-                    last_parsed_at=datetime.utcnow()
-                ))
-                logger.info(f"📝 Updated existing document record (ID: {db_document.id})")
-            else:
-                # Create new document
-                db_document = crud.create_document(db, doc_create)
-                logger.info(f"📝 Created new document record (ID: {db_document.id})")
-        except Exception as e:
-            logger.error(f"Error creating/updating document record: {str(e)}", exc_info=True)
-            # Continue without DB (non-blocking)
+        # Create or update Document record in database (status=processing)
+        db_document = create_or_update_document_record(db, request.filename, file_path)
 
         # Get parsing options
         opts = request.get_options()
@@ -419,70 +400,19 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
 
         logger.info(f"✅ Parsing complete: {lines} lines, {words} words, {round(chars / 1024, 2)} KB")
 
-        # Update Document record in database (status=completed)
-        if db_document:
-            try:
-                duration_seconds = time.time() - start_time
-
-                # Update document metadata
-                doc_update = schemas.DocumentUpdate(
-                    parsing_status="completed",
-                    parsing_strategy=strategy,
-                    last_parsed_at=datetime.utcnow()
-                )
-
-                if output_structure:
-                    doc_update.output_folder = output_structure["output_dir"]
-                    doc_update.content_md_path = output_structure["content_file"]
-
-                crud.update_document(db, db_document.id, doc_update)
-
-                # Save table metadata to database
-                if table_summary and table_extractions:
-                    try:
-                        table_creates = []
-                        for idx, table_data in enumerate(table_extractions):
-                            table_info = table_data.get("table_info", {})
-                            table_create = schemas.TableCreate(
-                                document_id=db_document.id,
-                                table_id=f"table_{idx+1:03d}",
-                                table_index=idx,
-                                page=table_info.get("page"),
-                                caption=table_info.get("caption"),
-                                rows=table_info.get("rows"),
-                                cols=table_info.get("cols"),
-                                has_merged_cells=table_info.get("has_merged_cells", False),
-                                is_complex=table_info.get("is_complex", False),
-                                complexity_score=table_info.get("complexity_score"),
-                                json_path=table_data.get("json_path"),
-                                parsing_method="camelot" if will_use_camelot else "docling"
-                            )
-                            table_creates.append(table_create)
-
-                        if table_creates:
-                            crud.create_tables_bulk(db, table_creates)
-                            logger.info(f"  💾 Saved {len(table_creates)} tables to database")
-                    except Exception as e:
-                        logger.error(f"Error saving table metadata: {str(e)}", exc_info=True)
-
-                # Create ParsingHistory record
-                try:
-                    history_create = schemas.ParsingHistoryCreate(
-                        document_id=db_document.id,
-                        parsing_status="completed",
-                        parsing_strategy=strategy,
-                        options_json=json.dumps(opts.model_dump()),
-                        total_tables=table_summary.get("total_tables", 0) if table_summary else 0,
-                        markdown_tables=table_summary.get("markdown_tables", 0) if table_summary else 0,
-                        json_tables=table_summary.get("json_tables", 0) if table_summary else 0,
-                        duration_seconds=duration_seconds
-                    )
-                    crud.create_parsing_history(db, history_create)
-                    logger.info(f"  💾 Created parsing history record (duration: {duration_seconds:.2f}s)")
-                except Exception as e:
-                    logger.error(f"Error creating parsing history: {str(e)}", exc_info=True)
-            except Exception as e:
-                logger.error(f"Error updating database after parsing: {str(e)}", exc_info=True)
+        # Save to database
+        duration_seconds = time.time() - start_time
+        save_parsing_success(
+            db=db,
+            db_document=db_document,
+            strategy=strategy,
+            output_structure=output_structure,
+            duration_seconds=duration_seconds,
+            options=opts,
+            table_summary=table_summary,
+            table_extractions=table_extractions if 'table_extractions' in locals() else None,
+            parsing_method="camelot" if will_use_camelot else "docling"
+        )
 
         # Smart Image Analysis: Filter VLM descriptions based on image classification
         if opts.auto_image_analysis and docling_doc:
@@ -553,30 +483,16 @@ async def parse_document(request: ParseRequest, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error parsing document: {str(e)}", exc_info=True)
 
-        # Update Document record to failed status
-        if db_document:
-            try:
-                duration_seconds = time.time() - start_time
-
-                # Update document status to failed
-                crud.update_document(db, db_document.id, schemas.DocumentUpdate(
-                    parsing_status="failed",
-                    last_parsed_at=datetime.utcnow()
-                ))
-
-                # Create ParsingHistory record with error
-                history_create = schemas.ParsingHistoryCreate(
-                    document_id=db_document.id,
-                    parsing_status="failed",
-                    parsing_strategy=strategy if 'strategy' in locals() else None,
-                    options_json=json.dumps(request.get_options().model_dump()),
-                    error_message=str(e),
-                    duration_seconds=duration_seconds
-                )
-                crud.create_parsing_history(db, history_create)
-                logger.info(f"  💾 Updated document to failed status and created error history")
-            except Exception as db_error:
-                logger.error(f"Error updating database after parsing failure: {str(db_error)}", exc_info=True)
+        # Save failure to database
+        duration_seconds = time.time() - start_time
+        save_parsing_failure(
+            db=db,
+            db_document=db_document,
+            strategy=strategy if 'strategy' in locals() else None,
+            error_message=str(e),
+            duration_seconds=duration_seconds,
+            options=request.get_options()
+        )
 
         return ParseResponse(
             success=False,

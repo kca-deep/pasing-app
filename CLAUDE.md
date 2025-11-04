@@ -4,46 +4,69 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A Next.js + FastAPI document parsing application that converts PDF/Office documents to Markdown/HTML/JSON. Supports multiple parsing strategies: Docling (default), Camelot (table extraction), MinerU (universal PDF parser), Dolphin (remote AI-powered OCR), and Remote OCR services.
+A full-stack document parsing application that converts PDF, DOCX, PPTX, and HTML files into Markdown/HTML/JSON formats with high accuracy. The system uses a hybrid parsing strategy combining multiple engines (Docling, Camelot, MinerU, Dolphin Remote GPU, Remote OCR) and includes integration with Dify Knowledge Base for RAG applications.
 
-**Tech Stack:**
-- Frontend: Next.js 15.5.4 (App Router), React 19, Tailwind 4, shadcn/ui
-- Backend: FastAPI, SQLAlchemy, Docling, Camelot, MinerU, PyTorch
-- Database: SQLite (parsing_app.db at project root)
+**Stack**: Next.js 15 (React 19) frontend + FastAPI backend + SQLite database
 
 ## Development Commands
 
-### Starting the Development Servers
+### Starting Development Servers
 
-**Windows (Recommended):**
+**Recommended**: Use PowerShell script to start both servers simultaneously:
 ```powershell
 .\start-dev.ps1
 ```
-This script starts both backend (port 8000) and frontend (port 3000) in separate PowerShell windows.
+This starts:
+- Backend (FastAPI): http://localhost:8000
+- Frontend (Next.js): http://localhost:3000
 
-**Manual Start:**
+**Manual start** (if needed):
 ```bash
-# Backend (from /backend)
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --log-level info
+# Backend only
+cd backend
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# Frontend (from root)
+# Frontend only
 npm run dev
 ```
 
-### Testing
+**Stop servers**:
+```powershell
+.\stop-dev.ps1
+```
 
-No test suite currently configured. Test manually via:
-- Frontend: http://localhost:3000
-- Backend API docs: http://localhost:8000/docs
-- Backend health: http://localhost:8000/
-
-### Build Commands
+### Backend Commands
 
 ```bash
-# Frontend build
+# Create/activate virtual environment (first time setup)
+cd backend
+python -m venv venv
+.\venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/Mac
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Database initialization
+python -m app.init_db
+
+# Run backend server
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Frontend Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Development server (with Turbopack)
+npm run dev
+
+# Production build
 npm run build
 
-# Frontend production start
+# Start production server
 npm start
 
 # Linting
@@ -52,322 +75,345 @@ npm run lint
 
 ## Architecture
 
-### Directory Structure
+### Backend Architecture (FastAPI)
 
+**Entry Point**: `backend/app/main.py` - FastAPI application with CORS, database initialization on startup
+
+**API Routers** (`backend/app/api/`):
+- `parsing.py` - Main parsing endpoint (`/parse`), orchestrates all parsing strategies
+- `async_parsing.py` - Background parsing jobs (`/parse/async`, `/parse/status/{job_id}`)
+- `documents.py` - File upload and document management
+- `results.py` - Retrieve parsed results
+- `dify.py` - Dify Knowledge Base integration
+- `database.py` - Database operations and queries
+- `health.py` - Health check endpoint
+
+**Parsing Strategy Selection** (`backend/app/api/parsing.py`):
+
+The parsing logic follows a priority-based strategy selection:
+
+1. **Remote OCR** (if `use_remote_ocr=True` and server available)
+   - Best for: Korean/scanned documents, images
+   - Uses external OCR server with multiple engines (Upstage, RapidOCR, PaddleOCR)
+   - Returns Markdown only
+
+2. **Dolphin Remote GPU** (if `use_dolphin=True` and server available)
+   - Best for: AI-powered high-accuracy parsing
+   - Requires GPU server connection (env: `DOLPHIN_GPU_SERVER`)
+   - Parsing levels: fast/normal/detailed
+   - Handles tables, images, formulas automatically
+
+3. **MinerU** (if `use_mineru=True` and library installed)
+   - Best for: Universal PDF parsing with good formula/table support
+   - Local library (`magic-pdf` package)
+   - Supports multiple output formats (Markdown/HTML)
+
+4. **Docling + Camelot Hybrid** (default fallback)
+   - Docling: Document structure and content extraction
+   - Camelot (optional): High-accuracy table parsing for PDFs
+   - Most flexible, works for all supported file types
+
+**Key Services** (`backend/app/services/`):
+- `docling.py` - Core Docling parsing with OCR/VLM options
+- `dolphin_remote.py` - Dolphin Remote GPU integration
+- `remote_ocr_parser.py` - Remote OCR service integration
+- `mineru_parser.py` - MinerU library wrapper
+- `tables.py` - Table integration and processing
+- `pictures.py` - Image classification and VLM description filtering
+- `dify_service.py` - Dify API client for Knowledge Base operations
+
+**Utilities** (`backend/app/utils/`):
+- `logging_utils.py` - Standardized logging utility with `ParserLogger` class
+
+**Database** (`backend/app/`):
+- `database.py` - SQLAlchemy session management
+- `db_models.py` - ORM models (Document, Table, ParsingHistory, DifyUploadLog)
+- `crud.py` - Database operations
+- `schemas.py` - Pydantic schemas for API validation
+- Database file: `parsing_app.db` (SQLite, in project root)
+
+**Table Extraction** (`backend/app/table_utils.py`):
+- Camelot-based extraction for PDFs (high accuracy)
+- Docling-based extraction for all formats
+- Complexity scoring to identify merged cells/complex tables
+- JSON export with cell-level structure
+
+**Configuration** (`backend/app/config.py`):
+- `DOCU_FOLDER` - Input documents folder (project root/docu)
+- `OUTPUT_FOLDER` - Parsed output folder (project root/output)
+- CORS settings loaded from environment variables
+
+### Logging Standards
+
+All parsing strategies use standardized logging via the `ParserLogger` class for consistency, maintainability, and ease of debugging.
+
+**Log Structure**:
 ```
-parsing-app/
-├── app/                    # Next.js App Router pages
-│   ├── page.tsx           # Home page (recent parses)
-│   └── parse/page.tsx     # Document parsing UI
-├── components/            # React components
-│   ├── upload/           # File upload & parsing options
-│   └── viewer/           # Result viewer & metadata panel
-├── lib/                   # Frontend utilities
-│   ├── api.ts            # FastAPI client
-│   └── types.ts          # TypeScript type definitions
-├── backend/              # FastAPI backend
-│   └── app/
-│       ├── main.py       # FastAPI app & router registration
-│       ├── config.py     # Configuration & paths
-│       ├── models.py     # Pydantic models (requests/responses)
-│       ├── database.py   # SQLAlchemy setup
-│       ├── crud.py       # Database operations
-│       ├── schemas.py    # SQLAlchemy ORM models
-│       ├── api/          # API route handlers
-│       │   ├── parsing.py        # Main /parse endpoint
-│       │   ├── async_parsing.py  # Async /parse/async endpoint
-│       │   ├── results.py        # /result & /parsed-documents
-│       │   ├── documents.py      # /documents & /upload
-│       │   └── health.py         # / health check
-│       └── services/     # Parsing engines
-│           ├── docling.py            # Docling parser
-│           ├── mineru_parser.py      # MinerU parser
-│           ├── dolphin_remote.py     # Dolphin remote GPU parser
-│           ├── remote_ocr_parser.py  # Remote OCR parser
-│           └── tables.py             # Camelot integration
-├── docu/                 # Input documents (uploaded files)
-├── output/               # Parsed results (organized by document name)
-└── parsing_app.db        # SQLite database (Document records)
+🎯 [Parser Name] Parsing: filename.pdf
+    📋 Config Key: value
+    ⚙️ Step 1/4: Description...
+        ├─ Sub-action: details
+        └─ Result: outcome
+    ✅ Complete: summary
+        └─ Metric: value
 ```
 
-### Parsing Strategy Flow
+**Standard Emojis**:
 
-The backend supports **5 parsing strategies** selected via `TableParsingOptions`:
+| Emoji | Purpose | Example |
+|-------|---------|---------|
+| 🎯 | Parser Start | `🎯 [Docling] Parsing: doc.pdf` |
+| 📋 | Configuration | `📋 OCR Engine: easyocr` |
+| 📄 | Document Processing | `📄 Converting PDF...` |
+| 🔍 | Analysis/Detection | `🔍 Analyzing document...` |
+| ⚙️ | Processing Step | `⚙️ Step 1/4: Creating dataset...` |
+| 📖 | Page Processing | `📖 Processing Page 1/10` |
+| 🌐 | Remote API Call | `🌐 Calling GPU server...` |
+| 💾 | Saving Output | `💾 Saved to output/content.md` |
+| 🔗 | Merging/Combining | `🔗 Merging all pages...` |
+| ✅ | Success | `✅ Complete: 10 pages processed` |
+| ⚠️ | Warning/Fallback | `⚠️ Fallback to local OCR` |
+| ❌ | Error | `❌ Failed: Connection timeout` |
 
-1. **Remote OCR** (`use_remote_ocr=True`) **[Dedicated Parser]**
-   - External OCR service: http://kca-ai.kro.kr:8005/ocr/extract
-   - Engines:
-     * `tesseract` - Fast (~0.2s)
-     * `paddleocr` - Accurate (~1.6s) ⭐ Recommended
-     * `dolphin` - AI-powered (~5s)
-   - Best for: Korean scanned documents/images
-   - Handler: `backend/app/services/remote_ocr_parser.py`
-   - **Note:** Uses dedicated parser, NOT Docling (Docling doesn't support remote OCR)
+**Indentation Rules**:
+- Level 0: Parser Start (no indent)
+- Level 1: Configuration & Main Steps (4 spaces)
+- Level 2: Sub-steps (8 spaces)
+- Level 3: Details (12 spaces)
 
-2. **Dolphin Remote** (`use_dolphin=True`) **[Remote GPU Only]**
-   - ByteDance Dolphin 1.5 multimodal AI running on remote GPU server
-   - High accuracy for abbreviations, brackets, dates (83.21 on OmniDocBench)
-   - Handler: `backend/app/services/dolphin_remote.py`
-   - Options: `dolphin_parsing_level` (page/element/layout), `dolphin_max_batch_size`
-   - **Note:** No local Dolphin installation - all inference done on remote server
+**Log Levels**:
+- **DEBUG**: Detailed internal operations (development only)
+- **INFO**: Normal processing steps and progress
+- **WARNING**: Fallback methods, partial failures
+- **ERROR**: Parsing failures, exceptions
 
-3. **MinerU** (`use_mineru=True`)
-   - Universal PDF parser with multilingual OCR (84 languages)
-   - Auto-detects document structure (merged cells, hierarchical tables)
-   - Handler: `backend/app/services/mineru_parser.py`
-   - Options: `mineru_lang` (auto/ko/zh/en/ja), `mineru_use_ocr`
-
-4. **Camelot** (`use_camelot=True`)
-   - PDF-only table extraction (lattice/stream/hybrid modes)
-   - Replaces Docling tables in final output
-   - Handler: `backend/app/table_utils.py` → `backend/app/services/tables.py`
-   - Options: `camelot_mode`, `camelot_accuracy_threshold`, `camelot_pages`
-
-5. **Docling** (default)
-   - General-purpose document parser (PDF/DOCX/PPTX/HTML)
-   - Handler: `backend/app/services/docling.py`
-   - Options: OCR (`do_ocr`, `ocr_lang`), Picture Description (`do_picture_description`)
-   - **OCR Engine:** EasyOCR only (local). Does NOT support remote OCR server
-
-**Selection Logic** (in `backend/app/api/parsing.py`):
+**Usage Example**:
 ```python
-if opts.use_remote_ocr:        # Remote OCR
-elif opts.use_dolphin:         # Dolphin (remote GPU)
-elif opts.use_mineru:          # MinerU
-elif opts.use_camelot:         # Docling + Camelot hybrid
-else:                          # Docling only
+from app.utils.logging_utils import ParserLogger
+
+parser_logger = ParserLogger("Docling", logger)
+
+# Start with configuration
+parser_logger.start(filename, output_format="markdown", ocr_enabled=True)
+
+# Log processing steps
+parser_logger.step(1, 3, "Processing document...")
+parser_logger.detail("Extracted 100 elements")
+
+# Log completion with metrics
+parser_logger.success("Parsing complete", pages=10, tables=5)
+
+# Log errors
+parser_logger.error("Parsing failed", exc_info=True, reason="Connection timeout")
 ```
 
-### Key Data Flow
+**Key Methods**:
+- `start(filename, **config)` - Log parser start with configuration
+- `step(current, total, description)` - Log main processing step
+- `sub_step(description, emoji=None)` - Log sub-step with optional emoji
+- `detail(description, last=False)` - Log detail information
+- `page(current, total)` - Log page processing
+- `remote_call(endpoint, description=None)` - Log remote API call
+- `success(summary, **metrics)` - Log successful completion
+- `warning(message, **details)` - Log warning
+- `error(summary, exc_info=False, **details)` - Log error
 
-1. **Upload:** Frontend → `POST /upload` → saves to `/docu`
-2. **Parse:** Frontend → `POST /parse` → parsing strategy execution → saves to `/output/{doc_name}/`
-3. **Results:** Frontend → `GET /result/{filename}` → returns cached result
-4. **Database:** All parses tracked in `parsing_app.db` (Document model)
+**Resource Checks** (module-level):
+```python
+from app.utils.logging_utils import log_resource_available, log_resource_unavailable
 
-### Frontend State Management
-
-- No global state library (React hooks only)
-- API calls via `lib/api.ts` (uses native `fetch`)
-- File uploads use `FormData` with 5-minute timeout
-- Async parsing uses polling via `GET /parse/status/{job_id}`
-
-### Backend Parsing Metadata
-
-All parsing responses include `ParsingMetadata`:
-- `parser_used`: "docling" | "mineru" | "dolphin" | "camelot" | "remote-ocr"
-- `table_parser`: "docling" | "camelot" | "mineru" (when tables extracted)
-- `ocr_enabled`: bool
-- `ocr_engine`: "easyocr" | "remote-tesseract" | "remote-paddleocr" | "remote-dolphin"
-- Parser-specific fields: `camelot_mode`, `dolphin_parsing_level`, `mineru_lang`
-
-## Important Patterns
-
-### Error Handling
-
-**Backend:**
-- Use `HTTPException(status_code, detail)` for client errors
-- Log errors with `logger.error(msg, exc_info=True)` for tracebacks
-- Return warnings via `ParseResponse.warnings` (list of strings)
-- Check parser availability via `check_*_installation()` functions (e.g., `check_mineru_installation()`)
-
-**Frontend:**
-- API errors thrown as `Error` objects with `response.json().detail || response.statusText`
-- Display errors in UI via state: `setError(err.message)`
-
-### Adding New Parsing Options
-
-1. **Backend:** Update `TableParsingOptions` in `backend/app/models.py`
-2. **Frontend:** Update `ParseOptions` interface in `lib/types.ts`
-3. **UI:** Add controls in `components/upload/ParsingOptions.tsx`
-4. **Parser:** Implement logic in `backend/app/api/parsing.py` or new service file
-
-### Database Operations
-
-- Use `app.database.get_db()` dependency for sessions
-- CRUD functions in `app/crud.py` (e.g., `get_document_by_filename`, `create_document`)
-- ORM models in `app/schemas.py` (e.g., `Document`)
-- Always use `try/except` for DB operations (non-blocking on errors)
-
-### Output Structure
-
-Parsed documents saved to `output/{doc_name}/`:
+log_resource_available(logger, "Dolphin GPU Server", url="http://server:8005")
+log_resource_unavailable(logger, "MinerU", reason="Not installed")
 ```
-output/sample/
-├── sample.md              # Main content
-├── tables/               # Extracted tables (CSV/JSON)
-└── pictures/             # Image descriptions (JSON)
+
+### Frontend Architecture (Next.js 15 App Router)
+
+**Pages** (`app/`):
+- `page.tsx` - Home page with parsed documents grid
+- `parse/page.tsx` - Document upload and parsing interface
+- `viewer/page.tsx` - Markdown/HTML content viewer
+- `dify/page.tsx` - Dify Knowledge Base upload interface
+
+**API Client** (`lib/api.ts`):
+- All backend API calls centralized here
+- Base URL: `process.env.NEXT_PUBLIC_API_URL` (defaults to `http://localhost:8000`)
+- Key functions: `uploadFile()`, `parseDocument()`, `parseDocumentAsync()`, `getParsingStatus()`, `uploadToDify()`
+
+**UI Components** (`components/ui/`):
+- Built with shadcn/ui and Radix UI primitives
+- Styled with Tailwind CSS v4
+- Key components: Card, Button, Badge, Progress, Dialog, Tabs
+
+**Styling**:
+- Tailwind CSS v4 with PostCSS
+- Custom animations defined in `app/globals.css`
+- Dark mode support with `next-themes`
+
+### Output Folder Structure
+
+Each parsed document creates a folder in `output/`:
+
 ```
+output/
+  {document_name}/
+    content.md          # Main content file
+    metadata.json       # Parsing metadata
+    tables/             # Extracted tables (if enabled)
+      table_001.json
+      table_002.json
+    images/             # Extracted images (MinerU/Dolphin only)
+```
+
+## Key Parsing Options
+
+When calling `/parse` endpoint, key options in request body:
+
+```json
+{
+  "filename": "document.pdf",
+  "output_format": "markdown",  // markdown | html | json
+
+  // Strategy selection (priority order: Remote OCR > Dolphin > MinerU > Docling+Camelot)
+  "use_remote_ocr": false,      // Use external OCR server
+  "use_dolphin": false,          // Use Dolphin Remote GPU
+  "use_mineru": false,           // Use MinerU library
+  "use_camelot": false,          // Use Camelot for table parsing (Docling+Camelot hybrid)
+
+  // OCR options (for Docling)
+  "do_ocr": false,               // Enable OCR
+  "ocr_engine": "easyocr",       // easyocr | tesseract
+  "ocr_lang": ["ko", "en"],      // OCR languages
+
+  // Table parsing options
+  "extract_tables": true,        // Extract tables to JSON files
+  "table_mode": "accurate",      // fast | accurate
+  "camelot_mode": "lattice",     // lattice | stream (for Camelot)
+
+  // Image analysis options
+  "do_picture_description": false,       // Enable VLM for all images
+  "auto_image_analysis": false,          // Smart image filtering (text vs visualization)
+
+  // Output options
+  "save_to_output_folder": true  // Save to output/{doc_name}/ instead of docu/
+}
+```
+
+## Important File Paths
+
+**Frontend**:
+- `/app/parse/page.tsx` - Main parsing UI with strategy selection
+- `/app/viewer/page.tsx` - Content viewer with syntax highlighting
+- `/lib/api.ts` - API client functions
+- `/lib/types.ts` - TypeScript type definitions
+
+**Backend**:
+- `/backend/app/api/parsing.py` - Core parsing logic (lines 37-586)
+- `/backend/app/services/docling.py` - Docling parser configuration
+- `/backend/app/table_utils.py` - Table extraction functions
+- `/backend/app/db_models.py` - Database schema definitions
+
+**Data Folders**:
+- `/docu/` - Input documents (upload destination)
+- `/output/` - Parsed output with structured folders
+- `/parsing_app.db` - SQLite database
+
+## Database Schema
+
+**Documents Table** (`Document` model):
+- Stores metadata for all uploaded documents
+- Tracks parsing status: pending | processing | completed | failed
+- Links to tables and parsing history
+
+**Tables Table** (`Table` model):
+- One-to-many with Document
+- Stores table metadata (rows, cols, complexity, caption)
+- References JSON files in output folder
+
+**ParsingHistory Table** (`ParsingHistory` model):
+- Audit trail of all parsing attempts
+- Stores parsing options, duration, error messages
+
+**DifyUploadLog Table** (`DifyUploadLog` model):
+- Tracks uploads to Dify Knowledge Base
+- Stores dataset_id, document_id, batch_id, indexing status
+
+## Remote Services Configuration
+
+**Dolphin Remote GPU Server**:
+- Environment variable: `DOLPHIN_GPU_SERVER` (default: `http://kca-ai.kro.kr:8005`)
+- Availability checked at runtime in `backend/app/services/dolphin_remote.py`
+
+**Remote OCR Server**:
+- Environment variable: `REMOTE_OCR_SERVER` (default: `http://kca-ai.kro.kr:8005`)
+- Supports multiple engines: upstage, rapidocr, paddleocr
+- Language support: Korean (kor), English (eng), Japanese (jpn), Chinese (chi)
+
+**Dify API**:
+- Configuration stored in database (DifyConfig table)
+- API key and base URL configured via `/dify` page
+- Knowledge Base integration for RAG applications
+
+## Testing Considerations
+
+When writing tests:
+- Backend: Use pytest, mock external services (Dolphin, Remote OCR servers)
+- Database: Use in-memory SQLite for test isolation
+- File operations: Mock file I/O or use temporary directories
+- Parsing: Test with small sample documents in test fixtures
+- API endpoints: Use FastAPI TestClient
+
+## Common Development Tasks
+
+**Adding a new parsing strategy**:
+1. Create service file in `backend/app/services/`
+2. Add availability check (similar to `CAMELOT_AVAILABLE`, `MINERU_AVAILABLE`)
+   - Use `log_resource_available()` / `log_resource_unavailable()` for consistent logging
+3. Implement parser function with standardized logging
+   - Import: `from app.utils.logging_utils import ParserLogger`
+   - Initialize: `parser_logger = ParserLogger("Your Parser", logger)`
+   - Use `parser_logger.start()`, `step()`, `success()`, `error()` methods
+4. Update `parsing.py` strategy selection logic
+5. Add parsing metadata fields in `models.py:ParsingMetadata`
+6. Update frontend UI in `app/parse/page.tsx` with new options
+
+**Logging Best Practices**:
+- Always use `ParserLogger` for consistent format across all parsers
+- Log parser start with `start(filename, **config)` to show configuration
+- Use `step(current, total, description)` for main processing steps (e.g., Step 1/4, Step 2/4)
+- Use `success(summary, **metrics)` with meaningful metrics (pages, tables, duration, etc.)
+- Use `error(summary, exc_info=True, **details)` for errors with context
+- Follow the standard emoji and indentation guidelines (see Logging Standards section)
+
+**Adding a new API endpoint**:
+1. Create router in `backend/app/api/` or add to existing router
+2. Define request/response schemas in `backend/app/schemas.py`
+3. Import and register router in `backend/app/main.py`
+4. Add client function in `lib/api.ts`
+5. Update TypeScript types in `lib/types.ts`
+
+**Database schema changes**:
+1. Update ORM models in `backend/app/db_models.py`
+2. Update Pydantic schemas in `backend/app/schemas.py`
+3. Update CRUD operations in `backend/app/crud.py`
+4. Consider migration strategy (currently using `init_db.py`)
 
 ## Environment Variables
 
-**Backend (.env in /backend):**
+**Backend** (`.env` or system environment):
+- `LOG_LEVEL` - Logging level (default: INFO)
+- `CORS_ALLOW_ORIGINS` - CORS origins (default: *)
+- `DOLPHIN_GPU_SERVER` - Dolphin Remote GPU server URL
+- `REMOTE_OCR_SERVER` - Remote OCR server URL
+- `DEFAULT_DOCLING_OCR_LANGUAGES` - Default OCR languages (default: ko,en)
 
-All backend environment variables are optional with sensible defaults. Copy `backend/.env.example` to `backend/.env` and customize as needed.
+**Frontend** (`.env.local`):
+- `NEXT_PUBLIC_API_URL` - Backend API URL (default: http://localhost:8000)
 
-### API Server Settings
-- `API_HOST`: Server host address (default: `0.0.0.0`)
-- `API_PORT`: Server port (default: `8000`)
-- `LOG_LEVEL`: Logging level - DEBUG/INFO/WARNING/ERROR (default: `INFO`)
+## Known Limitations
 
-### CORS Configuration
-- `CORS_ALLOW_ORIGINS`: Allowed origins, comma-separated (default: `*`)
-  - **Production:** Set to specific domains (e.g., `http://localhost:3000,https://yourdomain.com`)
-- `CORS_ALLOW_CREDENTIALS`: Allow credentials (default: `True`)
-- `CORS_ALLOW_METHODS`: Allowed HTTP methods (default: `*`)
-- `CORS_ALLOW_HEADERS`: Allowed headers (default: `*`)
-
-### Database Configuration
-- `DATABASE_ECHO`: Log SQL queries - True/False (default: `True`)
-  - **Production:** Set to `False` for better performance
-- `DATABASE_PATH`: Database file path relative to backend/ (default: `../parsing_app.db`)
-
-### Remote Service URLs
-- `DOLPHIN_GPU_SERVER`: Dolphin GPU server URL (default: `http://kca-ai.kro.kr:8005`)
-- `REMOTE_OCR_SERVER`: Remote OCR server URL (default: `http://kca-ai.kro.kr:8005`)
-
-### Timeout Settings (seconds)
-- `REMOTE_OCR_HEALTH_TIMEOUT`: Remote OCR health check timeout (default: `5`)
-- `REMOTE_OCR_REQUEST_TIMEOUT`: Remote OCR request timeout (default: `30`)
-- `DOLPHIN_HEALTH_TIMEOUT`: Dolphin GPU health check timeout (default: `5`)
-- `DOLPHIN_INFERENCE_TIMEOUT`: Dolphin inference timeout (default: `60`)
-
-### OCR Default Settings
-- `DEFAULT_OCR_LANGUAGES`: Remote OCR default languages, comma-separated (default: `eng,kor`)
-- `DEFAULT_DOCLING_OCR_LANGUAGES`: Docling EasyOCR languages, comma-separated (default: `ko,en`)
-
-### PDF Processing Settings
-- `PDF_RENDER_DPI`: PDF to image DPI for OCR (default: `300`)
-  - Higher values improve OCR accuracy but increase processing time
-- `DOLPHIN_IMAGE_TARGET_SIZE`: Dolphin image target size in pixels (default: `896`)
-
-### GPU Server Settings (for gpu_server.py)
-- `GPU_SERVER_HOST`: GPU server host (default: `0.0.0.0`)
-- `GPU_SERVER_PORT`: GPU server port (default: `8001`)
-- `GPU_SERVER_LOG_LEVEL`: GPU server log level (default: `info`)
-- `DOLPHIN_MAX_LENGTH`: Dolphin max generation tokens (default: `4096`)
-- `DOLPHIN_TEMPERATURE`: Dolphin sampling temperature (default: `0.0`)
-- `DOLPHIN_USE_FP16`: Use FP16 on GPU - True/False (default: `True`)
-
-**Frontend (.env.local in root):**
-- `NEXT_PUBLIC_API_URL`: Backend URL (default: `http://localhost:8000`)
-
-## Dependencies
-
-### Backend Critical Dependencies
-
-- `docling>=2.57.0`: Core document parsing
-- `camelot-py==1.0.9`: PDF table extraction (requires `ghostscript` binary)
-- `mineru>=2.5.4`: Universal PDF parser (optional)
-- `transformers>=4.40.0`: For Dolphin/VLM models
-- `torch>=2.9.0`: Deep learning backend
-- `fastapi==0.115.0`, `uvicorn==0.32.0`: Web framework
-- `sqlalchemy==2.0.36`: ORM
-
-**Note:** MinerU and Dolphin are optional. Check availability via:
-```python
-from app.services.mineru_parser import MINERU_AVAILABLE
-from app.services.dolphin_remote import DOLPHIN_REMOTE_AVAILABLE
-```
-
-### Frontend Critical Dependencies
-
-- `next==15.5.4`: App Router framework
-- `react-markdown`, `remark-gfm`, `rehype-raw`: Markdown rendering
-- `@radix-ui/*`: UI primitives (used by shadcn/ui)
-
-## Testing Strategy
-
-**Manual Testing Workflow:**
-1. Start dev servers via `start-dev.ps1`
-2. Upload test document via frontend: http://localhost:3000/parse
-3. Select parsing options (strategy, OCR, table extraction)
-4. Verify output in `output/{doc_name}/` folder
-5. Check API logs in backend terminal window
-
-**Testing Different Parsers:**
-- Remote OCR: Enable "Remote OCR" toggle, select engine (tesseract/paddleocr/dolphin)
-- Dolphin: Select "Dolphin (AI-Powered)" strategy, adjust parsing level
-- MinerU: Select "MinerU (Universal)" strategy, set language
-- Camelot: Select "Camelot (Tables)" strategy, choose mode (lattice/stream/hybrid)
-- Docling: Default strategy (no special selection needed)
-
-## Common Issues
-
-### Backend Won't Start
-
-- Check Python version (requires 3.9+)
-- Verify `backend/requirements.txt` installed: `pip install -r backend/requirements.txt`
-- Ensure `docu/` and `output/` folders exist (auto-created in `config.py`)
-
-### MinerU/Dolphin Not Available
-
-- MinerU is optional - check `MINERU_AVAILABLE` flag in code
-- Dolphin requires remote GPU server access - check `DOLPHIN_REMOTE_AVAILABLE`
-- Application degrades gracefully (uses Docling as fallback)
-
-### Camelot Import Errors
-
-- Requires `ghostscript` binary installed on system (not Python package)
-- Windows: Install via Chocolatey or official installer
-- Check `CAMELOT_AVAILABLE` flag (auto-detected)
-
-### Database Locked Errors
-
-- SQLite `check_same_thread=False` already configured in `database.py`
-- If persists, delete `parsing_app.db` and restart (database auto-recreates)
-
-## Code Style
-
-- Backend: Follow PEP 8, use type hints where possible
-- Frontend: TypeScript strict mode, functional components only
-- Use existing logger instances (`logger = logging.getLogger(__name__)`)
-- Prefix log messages with emoji for visibility (e.g., `logger.info("📄 Parsing started")`)
-
-## Remote GPU Server (Dolphin)
-
-The GPU server is a **standalone FastAPI server** designed to run on a remote GPU machine.
-
-### Architecture:
-- **GPU Server:** `backend/gpu_server.py` - Runs Dolphin model inference on GPU
-- **Client:** `backend/app/services/dolphin_remote.py` - Calls GPU server via HTTP
-- **Default Server:** `http://kca-ai.kro.kr:8005` (Unified OCR Server)
-
-### Setup (GPU Server Machine):
-
-See `backend/GPU_SERVER.md` for detailed setup instructions.
-
-**Quick Start:**
-```bash
-# Copy backend/gpu_server.py to your GPU server
-cd /path/to/gpu-server
-pip install fastapi uvicorn transformers torch pillow
-
-# Download Dolphin model
-pip install huggingface-hub
-huggingface-cli download ByteDance/Dolphin-1.5 --local-dir ./dolphin_models/Dolphin-1.5
-
-# Run GPU server
-python gpu_server.py --model-path ./dolphin_models/Dolphin-1.5 --port 8001
-```
-
-### Environment Variable (Backend):
-```bash
-# backend/.env
-DOLPHIN_GPU_SERVER=http://kca-ai.kro.kr:8005  # Unified OCR Server (default)
-# Or use your own GPU server:
-# DOLPHIN_GPU_SERVER=http://192.168.1.100:8001
-```
-
-The backend automatically checks GPU server availability on startup. If unavailable, Dolphin parsing is disabled (graceful degradation).
-
-## Dolphin Integration Status
-
-**Current Phase:** Phase 5 (Testing) - Core implementation complete
-- **Architecture:** Remote GPU only (no local installation)
-- See `prompts/dolphin-integration-plan.md` for detailed integration plan
-- Implementation files: `backend/app/services/dolphin_remote.py`, `backend/app/services/dolphin_utils.py`
-- Frontend UI complete: `components/upload/ParsingOptions.tsx` has Dolphin strategy selector
-- **Remaining:** E2E testing and accuracy benchmarking vs MinerU
-
-**Important:** Local Dolphin parser (`dolphin_parser.py`) has been removed. Only remote GPU server is used.
+- Dolphin Local mode has been removed; only Dolphin Remote GPU is supported
+- Remote OCR returns Markdown only (no HTML/JSON)
+- Camelot only works with PDF files (lattice/stream modes)
+- VLM picture description requires significant processing time
+- Large files (>100MB) may timeout; use async parsing endpoint instead
+- MinerU installation requires `pip install magic-pdf[full]` (large dependency)

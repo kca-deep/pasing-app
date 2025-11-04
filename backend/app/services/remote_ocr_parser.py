@@ -22,6 +22,9 @@ from app.services.remote_ocr import (
 
 logger = logging.getLogger(__name__)
 
+# Import standardized logging utility
+from app.utils.logging_utils import ParserLogger
+
 # PDF 렌더링 DPI 설정
 PDF_RENDER_DPI = int(os.getenv("PDF_RENDER_DPI", "300"))
 
@@ -60,9 +63,15 @@ def parse_with_remote_ocr(
     if ocr_languages is None:
         ocr_languages = DEFAULT_OCR_LANGUAGES
 
-    logger.info(f"🔍 Remote OCR Parsing: {file_path.name}")
-    logger.info(f"  Engine: {ocr_engine}")
-    logger.info(f"  Languages: {ocr_languages}")
+    # Initialize standardized logger
+    parser_logger = ParserLogger("Remote OCR", logger)
+
+    # Log parser start with configuration
+    parser_logger.start(
+        file_path.name,
+        engine=ocr_engine,
+        languages=', '.join(ocr_languages)
+    )
 
     try:
         file_extension = file_path.suffix.lower()
@@ -70,12 +79,12 @@ def parse_with_remote_ocr(
         # PDF 처리
         if file_extension == '.pdf':
             content, metadata = _parse_pdf_with_remote_ocr(
-                file_path, ocr_engine, ocr_languages, progress_callback
+                file_path, ocr_engine, ocr_languages, parser_logger, progress_callback
             )
         # 이미지 파일 처리 (PNG, JPG, JPEG, TIFF, BMP)
         elif file_extension in ['.png', '.jpg', '.jpeg', '.tiff', '.tif', '.bmp']:
             content, metadata = _parse_image_with_remote_ocr(
-                file_path, ocr_engine, ocr_languages, progress_callback
+                file_path, ocr_engine, ocr_languages, parser_logger, progress_callback
             )
         else:
             raise Exception(
@@ -88,19 +97,19 @@ def parse_with_remote_ocr(
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / "content.md"
             output_file.write_text(content, encoding="utf-8")
-            logger.info(f"  💾 Saved to {output_file}")
+            parser_logger.sub_step(f"Saved to {output_file}", emoji='save')
 
-        logger.info(
-            f"\n✅ Remote OCR Parsing Complete:\n"
-            f"  - Engine: {ocr_engine}\n"
-            f"  - Pages: {metadata.get('pages', 1)}\n"
-            f"  - Characters: {len(content)}"
+        parser_logger.success(
+            "Parsing complete",
+            engine=ocr_engine,
+            pages=metadata.get('pages', 1),
+            characters=len(content)
         )
 
         return content, metadata
 
     except Exception as e:
-        logger.error(f"❌ Remote OCR parsing failed: {str(e)}", exc_info=True)
+        parser_logger.error(f"Remote OCR parsing failed: {str(e)}", exc_info=True)
         raise
 
 
@@ -108,6 +117,7 @@ def _parse_pdf_with_remote_ocr(
     pdf_path: Path,
     ocr_engine: str,
     ocr_languages: List[str],
+    parser_logger: 'ParserLogger',
     progress_callback: Optional[callable] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
@@ -117,17 +127,19 @@ def _parse_pdf_with_remote_ocr(
         pdf_path: PDF 파일 경로
         ocr_engine: OCR 엔진
         ocr_languages: 언어 리스트
+        parser_logger: ParserLogger instance for standardized logging
+        progress_callback: Optional progress callback function
 
     Returns:
         (content, metadata) 튜플
     """
-    logger.info("  📄 Converting PDF pages to images...")
-
     try:
         # PDF 열기
         pdf_document = fitz.open(str(pdf_path))
         num_pages = len(pdf_document)
-        logger.info(f"  Pages: {num_pages}")
+
+        parser_logger.step(1, 2, f"Converting PDF to images...")
+        parser_logger.detail(f"Pages: {num_pages}", last=True)
 
         if progress_callback:
             progress_callback(20, f"Converting PDF ({num_pages} pages) to images...")
@@ -136,7 +148,7 @@ def _parse_pdf_with_remote_ocr(
 
         # 페이지별 처리
         for page_num in range(num_pages):
-            logger.info(f"\n  📖 Processing Page {page_num + 1}/{num_pages}")
+            parser_logger.page(page_num + 1, num_pages)
 
             # Progress update
             if progress_callback:
@@ -155,7 +167,7 @@ def _parse_pdf_with_remote_ocr(
             pil_image = Image.open(BytesIO(img_data))
 
             # 원격 OCR 호출
-            logger.info(f"    🌐 Calling remote OCR service...")
+            parser_logger.remote_call("Remote OCR", f"Page {page_num + 1}")
             page_text = ocr_extract_from_pil(
                 pil_image,
                 engine=ocr_engine,
@@ -164,14 +176,16 @@ def _parse_pdf_with_remote_ocr(
 
             if page_text.strip():
                 all_page_contents.append(page_text)
-                logger.info(f"    ✓ Extracted {len(page_text)} characters")
+                parser_logger.detail(f"Extracted {len(page_text)} characters")
             else:
-                logger.warning(f"    ⚠️ No text extracted from page {page_num + 1}")
+                parser_logger.warning(f"No text extracted from page {page_num + 1}")
 
         pdf_document.close()
 
         # 페이지 구분자로 통합
+        parser_logger.step(2, 2, "Merging all pages...")
         content = "\n\n---\n\n".join(all_page_contents)
+        parser_logger.detail(f"Total characters: {len(content)}", last=True)
 
         # 메타데이터
         metadata = {
@@ -192,6 +206,7 @@ def _parse_image_with_remote_ocr(
     image_path: Path,
     ocr_engine: str,
     ocr_languages: List[str],
+    parser_logger: 'ParserLogger',
     progress_callback: Optional[callable] = None
 ) -> Tuple[str, Dict[str, Any]]:
     """
@@ -201,22 +216,27 @@ def _parse_image_with_remote_ocr(
         image_path: 이미지 파일 경로
         ocr_engine: OCR 엔진
         ocr_languages: 언어 리스트
+        parser_logger: ParserLogger instance for standardized logging
+        progress_callback: Optional progress callback function
 
     Returns:
         (content, metadata) 튜플
     """
-    logger.info("  🖼️ Processing image file...")
+    parser_logger.step(1, 1, "Processing image file...")
 
     try:
         if progress_callback:
             progress_callback(30, "Processing image with Remote OCR...")
 
         # 원격 OCR 호출 (파일 경로로 직접)
+        parser_logger.remote_call("Remote OCR", "Image processing")
         text = ocr_extract(
             str(image_path),
             engine=ocr_engine,
             languages=ocr_languages
         )
+
+        parser_logger.detail(f"Extracted {len(text)} characters", last=True)
 
         if progress_callback:
             progress_callback(80, "Finalizing OCR results...")

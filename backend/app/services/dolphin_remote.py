@@ -17,6 +17,9 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Import standardized logging utility
+from app.utils.logging_utils import ParserLogger, log_resource_available, log_resource_unavailable
+
 # 환경 변수에서 GPU 서버 주소 가져오기 (통합 OCR 서버)
 DOLPHIN_GPU_SERVER = os.getenv("DOLPHIN_GPU_SERVER", "http://kca-ai.kro.kr:8005")
 DOLPHIN_HEALTH_TIMEOUT = int(os.getenv("DOLPHIN_HEALTH_TIMEOUT", "5"))
@@ -29,11 +32,11 @@ try:
     response = requests.get(f"{DOLPHIN_GPU_SERVER}/health", timeout=DOLPHIN_HEALTH_TIMEOUT)
     if response.status_code == 200:
         DOLPHIN_REMOTE_AVAILABLE = True
-        logger.info(f"✅ Dolphin GPU Server connected: {DOLPHIN_GPU_SERVER}")
+        log_resource_available(logger, "Dolphin GPU Server", url=DOLPHIN_GPU_SERVER, status="connected")
     else:
-        logger.warning(f"⚠️ Dolphin GPU Server not healthy: {DOLPHIN_GPU_SERVER}")
+        log_resource_unavailable(logger, "Dolphin GPU Server", url=DOLPHIN_GPU_SERVER, status="not healthy")
 except Exception as e:
-    logger.warning(f"⚠️ Dolphin GPU Server not available: {e}")
+    log_resource_unavailable(logger, "Dolphin GPU Server", url=DOLPHIN_GPU_SERVER, error=str(e))
 
 
 def call_dolphin_gpu(image: Image.Image, prompt: str, max_length: int = 4096) -> str:
@@ -55,7 +58,7 @@ def call_dolphin_gpu(image: Image.Image, prompt: str, max_length: int = 4096) ->
 
     # GPU 서버 API 호출
     try:
-        request_url = f"{DOLPHIN_GPU_SERVER}/vision"
+        request_url = f"{DOLPHIN_GPU_SERVER}/ocr/extract"
         logger.info(f"    🌐 [Remote GPU Request] POST {request_url}")
         logger.info(f"       Prompt: {prompt[:50]}...")
 
@@ -127,24 +130,33 @@ def parse_with_dolphin_remote(
         format_element_markdown
     )
 
-    logger.info(f"🐬 Dolphin Remote Parsing: {file_path.name}")
-    logger.info(f"  GPU Server: {DOLPHIN_GPU_SERVER}")
+    # Initialize standardized logger
+    parser_logger = ParserLogger("Dolphin Remote", logger)
+
+    # Log parser start with configuration
+    parser_logger.start(
+        file_path.name,
+        gpu_server=DOLPHIN_GPU_SERVER,
+        parsing_level=parsing_level,
+        output_format=output_format
+    )
 
     try:
         # 진행 상태: GPU 서버 연결
         if progress_callback:
-            progress_callback(10, "📡 Connecting to GPU server...")
+            progress_callback(10, "Connecting to GPU server...")
 
         # 1. GPU 서버 상태 확인
+        parser_logger.step(1, 4, "Checking GPU server availability...")
         response = requests.get(f"{DOLPHIN_GPU_SERVER}/health", timeout=DOLPHIN_HEALTH_TIMEOUT)
         response.raise_for_status()
         server_info = response.json()
-        logger.info(f"  GPU Server Status: {server_info}")
+        parser_logger.detail(f"Server Status: {server_info.get('status', 'healthy')}", last=True)
 
         # 2. PDF → 이미지 변환 (로컬에서 처리)
         if progress_callback:
-            progress_callback(20, "📄 Converting PDF to images...")
-        logger.info("  📄 Converting PDF to images...")
+            progress_callback(20, "Converting PDF to images...")
+        parser_logger.step(2, 4, "Converting PDF to images...")
 
         if file_path.suffix.lower() == '.pdf':
             images = convert_pdf_to_images_pymupdf(str(file_path), target_size=DOLPHIN_IMAGE_TARGET_SIZE)
@@ -153,7 +165,7 @@ def parse_with_dolphin_remote(
 
         if progress_callback:
             progress_callback(25, f"Converted {len(images)} pages")
-        logger.info(f"  Converted {len(images)} pages")
+        parser_logger.detail(f"Converted: {len(images)} pages", last=True)
 
         # 3. 페이지별 2단계 파싱 (GPU 서버 호출)
         all_page_contents = []
@@ -166,13 +178,13 @@ def parse_with_dolphin_remote(
             page_progress_end = 25 + int(((page_idx + 1) / len(images)) * 65)
 
             if progress_callback:
-                progress_callback(page_progress_start, f"📖 Processing Page {page_idx + 1}/{len(images)}")
-            logger.info(f"\n  📖 Processing Page {page_idx + 1}/{len(images)}")
+                progress_callback(page_progress_start, f"Processing Page {page_idx + 1}/{len(images)}")
+            parser_logger.page(page_idx + 1, len(images))
 
             # ===== STAGE 1: Layout Analysis (GPU 서버 호출) =====
             if progress_callback:
-                progress_callback(page_progress_start + 1, f"    Stage 1: Layout Analysis (GPU)...")
-            logger.info("    Stage 1: Layout Analysis (GPU)...")
+                progress_callback(page_progress_start + 1, f"Stage 1: Layout Analysis...")
+            parser_logger.sub_step("Stage 1: Layout Analysis (GPU)...", emoji='analysis')
 
             layout_prompt = "Parse the reading order of this document."
             layout_output = call_dolphin_gpu(pil_image, layout_prompt)
@@ -180,17 +192,20 @@ def parse_with_dolphin_remote(
             # 레이아웃 파싱 (로컬)
             layout_results = parse_layout_string(layout_output)
             if progress_callback:
-                progress_callback(page_progress_start + 2, f"    Detected {len(layout_results)} elements")
-            logger.info(f"    Detected {len(layout_results)} elements")
+                progress_callback(page_progress_start + 2, f"Detected {len(layout_results)} elements")
+            parser_logger.detail(f"Detected: {len(layout_results)} elements")
 
             if not layout_results:
-                logger.warning(f"    ⚠️ No layout elements found on page {page_idx + 1}")
+                parser_logger.warning(
+                    f"No layout elements found on page {page_idx + 1}",
+                    page=page_idx + 1
+                )
                 continue
 
             # ===== STAGE 2: Element Parsing (GPU 서버 호출) =====
             if progress_callback:
-                progress_callback(page_progress_start + 3, f"    Stage 2: Parsing elements (GPU)...")
-            logger.info(f"    Stage 2: Parsing {len(layout_results)} elements (GPU)...")
+                progress_callback(page_progress_start + 3, f"Stage 2: Parsing elements...")
+            parser_logger.sub_step(f"Stage 2: Parsing {len(layout_results)} elements (GPU)...", emoji='process')
 
             page_elements = []
 
@@ -218,11 +233,10 @@ def parse_with_dolphin_remote(
                         # 진행 상태 업데이트
                         element_progress = page_progress_start + 3 + int((elem_idx / len(layout_results)) * (page_progress_end - page_progress_start - 3))
                         if progress_callback:
-                            progress_callback(element_progress, f"      Parsed {elem_idx + 1}/{len(layout_results)} elements...")
-                        logger.info(f"      Element {elem_idx + 1}/{len(layout_results)} ({label}) parsed")
+                            progress_callback(element_progress, f"Parsed {elem_idx + 1}/{len(layout_results)} elements...")
 
                 except Exception as e:
-                    logger.warning(f"      ⚠️ Error parsing element {elem_idx}: {str(e)}")
+                    logger.debug(f"Error parsing element {elem_idx}: {str(e)}")
                     continue
 
             # 페이지 내용 통합
@@ -230,13 +244,13 @@ def parse_with_dolphin_remote(
             all_page_contents.append(page_content)
 
             if progress_callback:
-                progress_callback(page_progress_end, f"    ✅ Page {page_idx + 1}: {len(page_elements)} elements")
-            logger.info(f"    ✅ Page {page_idx + 1}: {len(page_elements)} elements")
+                progress_callback(page_progress_end, f"Page {page_idx + 1}: {len(page_elements)} elements")
+            parser_logger.detail(f"Page {page_idx + 1}: {len(page_elements)} elements parsed", last=True)
 
         # 4. 전체 문서 통합
         if progress_callback:
-            progress_callback(90, "🔗 Merging all pages...")
-        logger.info("\n  🔗 Merging all pages...")
+            progress_callback(90, "Merging all pages...")
+        parser_logger.step(4, 4, "Merging all pages...")
 
         content = "\n\n---\n\n".join(all_page_contents)
 
@@ -251,23 +265,22 @@ def parse_with_dolphin_remote(
             "gpu_server": DOLPHIN_GPU_SERVER
         }
 
-        logger.info(
-            f"\n✅ Dolphin Remote Parsing Complete:\n"
-            f"  - GPU Server: {DOLPHIN_GPU_SERVER}\n"
-            f"  - Pages: {metadata['pages']}\n"
-            f"  - Elements: {metadata['total_elements']}\n"
-            f"  - Tables: {metadata['tables']}\n"
-            f"  - Formulas: {metadata['formulas']}"
+        parser_logger.success(
+            "Parsing complete",
+            pages=metadata['pages'],
+            total_elements=metadata['total_elements'],
+            tables=metadata['tables'],
+            formulas=metadata['formulas']
         )
 
         # 5. 저장 (옵션)
         if output_dir:
             if progress_callback:
-                progress_callback(93, "💾 Saving to output folder...")
+                progress_callback(93, "Saving to output folder...")
             output_dir.mkdir(parents=True, exist_ok=True)
             output_file = output_dir / "content.md"
             output_file.write_text(content, encoding="utf-8")
-            logger.info(f"  💾 Saved to {output_file}")
+            parser_logger.sub_step(f"Saved to {output_file}", emoji='save')
 
         # 6. 출력 형식 변환
         if output_format == "json":
@@ -284,7 +297,7 @@ def parse_with_dolphin_remote(
         return content, metadata
 
     except Exception as e:
-        logger.error(f"❌ Dolphin remote parsing failed: {str(e)}", exc_info=True)
+        parser_logger.error(f"Dolphin remote parsing failed: {str(e)}", exc_info=True)
         raise
 
 

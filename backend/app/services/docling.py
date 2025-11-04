@@ -30,6 +30,9 @@ from app.models import TableParsingOptions
 
 logger = logging.getLogger(__name__)
 
+# Import standardized logging utility
+from app.utils.logging_utils import ParserLogger
+
 # Docling EasyOCR 기본 언어 설정
 DEFAULT_DOCLING_OCR_LANGUAGES = os.getenv("DEFAULT_DOCLING_OCR_LANGUAGES", "ko,en").split(",")
 
@@ -49,6 +52,23 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
 
         Picture Description is applied only when enabled and only to images above area threshold.
     """
+    # Initialize standardized logger
+    parser_logger = ParserLogger("Docling", logger)
+
+    # Log parser start with configuration
+    parser_logger.start(
+        file_path.name,
+        output_format=opts.output_format,
+        do_ocr=opts.do_ocr,
+        ocr_engine=opts.ocr_engine if opts.do_ocr else "N/A",
+        table_mode=opts.table_mode,
+        extract_tables=opts.extract_tables if hasattr(opts, 'extract_tables') else False,
+        auto_image_analysis=opts.auto_image_analysis if opts.auto_image_analysis else False,
+        do_picture_description=opts.do_picture_description if opts.do_picture_description else False,
+        tables_as_html=opts.tables_as_html if hasattr(opts, 'tables_as_html') else False,
+        do_cell_matching=opts.do_cell_matching
+    )
+
     # Standard PDF Pipeline (Fast and accurate)
     pipeline_options = PdfPipelineOptions()
     pipeline_options.do_ocr = opts.do_ocr
@@ -59,28 +79,26 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
         # Remote OCR는 parsing.py에서 parse_with_remote_ocr()로 별도 처리됨
         if opts.use_remote_ocr:
             # Docling은 remote OCR을 지원하지 않으므로 local OCR로 fallback
-            logger.warning("⚠️ Docling does not support remote OCR. Using local OCR instead.")
-            logger.warning("   To use remote OCR, set use_remote_ocr=True at the parsing.py level.")
+            parser_logger.warning(
+                "Docling does not support remote OCR. Using local OCR instead.",
+                suggestion="Set use_remote_ocr=True at the parsing.py level"
+            )
 
             ocr_langs = opts.ocr_lang or opts.remote_ocr_languages or DEFAULT_DOCLING_OCR_LANGUAGES
 
             # Select OCR engine based on user preference
             if opts.ocr_engine == "tesseract":
                 pipeline_options.ocr_options = TesseractOcrOptions(lang=ocr_langs)
-                logger.info(f"  OCR: Tesseract with languages {ocr_langs} (remote OCR not available)")
             else:  # easyocr (default)
                 pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
-                logger.info(f"  OCR: EasyOCR with languages {ocr_langs} (remote OCR not available)")
         else:
             # Local OCR with engine selection
             ocr_langs = opts.ocr_lang or DEFAULT_DOCLING_OCR_LANGUAGES
 
             if opts.ocr_engine == "tesseract":
                 pipeline_options.ocr_options = TesseractOcrOptions(lang=ocr_langs)
-                logger.info(f"  OCR: Tesseract (fast) with languages {ocr_langs}")
             else:  # easyocr (default)
                 pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
-                logger.info(f"  OCR: EasyOCR (accurate) with languages {ocr_langs}")
 
     pipeline_options.do_table_structure = True
 
@@ -94,8 +112,6 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
 
     # Smart Image Analysis: Auto-detect image type and apply appropriate processing
     if opts.auto_image_analysis:
-        logger.info("  Smart Image Analysis: Enabled (auto-selecting OCR vs VLM)")
-
         # Enable all image processing features
         pipeline_options.do_ocr = True  # Extract text from images
         pipeline_options.do_picture_classification = True  # Classify image types
@@ -121,14 +137,8 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
         pipeline_options.picture_description_options.prompt = opts.picture_description_prompt
         pipeline_options.picture_description_options.picture_area_threshold = opts.picture_area_threshold
 
-        logger.info("    - OCR: Enabled (text extraction)")
-        logger.info("    - Classification: Enabled (image type detection)")
-        logger.info("    - VLM: Enabled (visualization description)")
-
     # Manual Picture Description configuration (only when enabled and auto_image_analysis is off)
     elif opts.do_picture_description:
-        logger.info(f"  Picture Description: Enabled (model={opts.picture_description_model}, threshold={opts.picture_area_threshold})")
-
         pipeline_options.do_picture_description = True
         pipeline_options.generate_picture_images = True
         pipeline_options.images_scale = opts.picture_images_scale
@@ -147,7 +157,10 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
             )
         else:
             # Default to SmolVLM
-            logger.warning(f"  Invalid model or missing repo_id, falling back to SmolVLM")
+            parser_logger.warning(
+                "Invalid VLM model or missing repo_id, falling back to SmolVLM",
+                model=opts.picture_description_model
+            )
             pipeline_options.picture_description_options = smolvlm_picture_description
 
         # Apply custom settings
@@ -226,5 +239,18 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
                 image_placeholder=opts.image_placeholder,      # Custom image placeholder
                 indent=opts.indent                      # Indentation level for nested structures
             )
+
+    # Log successful completion with metrics
+    num_pages = docling_doc.pages if hasattr(docling_doc, 'pages') and docling_doc.pages else 0
+    num_tables = len([item for item in docling_doc.main_text if hasattr(item, 'label') and item.label == 'table']) if hasattr(docling_doc, 'main_text') else 0
+    content_length = len(content)
+
+    parser_logger.success(
+        "Document parsed successfully",
+        pages=num_pages if isinstance(num_pages, int) else len(num_pages) if num_pages else "N/A",
+        tables=num_tables,
+        content_chars=content_length,
+        format=opts.output_format
+    )
 
     return content, docling_doc

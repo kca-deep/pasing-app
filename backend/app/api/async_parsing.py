@@ -9,12 +9,21 @@ from sqlalchemy.orm import Session
 from pathlib import Path
 import logging
 import asyncio
+import json
+import time
+from datetime import datetime
 
 from app.config import DOCU_FOLDER
 from app.models import ParseRequest
 from app.job_manager import job_manager, JobStatus
 from app.database import get_db
 from app.services.dolphin_remote import parse_with_dolphin_remote, DOLPHIN_REMOTE_AVAILABLE
+from app import crud, schemas
+from app.utils.parsing_db import (
+    create_or_update_document_record,
+    save_parsing_success,
+    save_parsing_failure
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,6 +44,10 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
     from app.services.remote_ocr import REMOTE_OCR_AVAILABLE
     from pathlib import Path
 
+    start_time = time.time()
+    db_document = None
+    strategy = None
+
     try:
         # Update job status to processing
         job_manager.update_progress(
@@ -52,6 +65,9 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
         # Get file path and options
         file_path = DOCU_FOLDER / request.filename
         opts = request.get_options()
+
+        # Create or update Document record in database (status=processing)
+        db_document = create_or_update_document_record(db, request.filename, file_path)
 
         # Route to appropriate parser with progress callback
         is_pdf = file_path.suffix.lower() == '.pdf'
@@ -77,6 +93,31 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
 
             # Build result
             from app.models import ParseResponse, ParsingMetadata
+
+            strategy = f'Remote OCR ({opts.remote_ocr_engine or "paddleocr"})'
+
+            # Save to database
+            save_parsing_success(
+                db=db,
+                db_document=db_document,
+                strategy=strategy,
+                output_structure={
+                    "output_dir": str(doc_output_dir),
+                    "content_file": str(doc_output_dir / "content.md"),
+                    "images_dir": None,
+                    "tables_dir": None
+                },
+                duration_seconds=time.time() - start_time,
+                options=opts,
+                table_summary={
+                    "parsing_method": "remote_ocr",
+                    "ocr_engine": opts.remote_ocr_engine or "paddleocr",
+                    "total_tables": 0
+                },
+                table_extractions=None,
+                parsing_method="remote_ocr"
+            )
+
             result = ParseResponse(
                 success=True,
                 filename=request.filename,
@@ -132,6 +173,30 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
 
             # Build result
             from app.models import ParseResponse, ParsingMetadata
+
+            strategy = f'Dolphin Remote GPU ({opts.dolphin_parsing_level or "normal"})'
+
+            # Save to database
+            save_parsing_success(
+                db=db,
+                db_document=db_document,
+                strategy=strategy,
+                output_structure={
+                    "output_dir": str(doc_output_dir),
+                    "content_file": str(doc_output_dir / "content.md"),
+                    "images_dir": None,
+                    "tables_dir": None
+                },
+                duration_seconds=time.time() - start_time,
+                options=opts,
+                table_summary={
+                    "total_tables": metadata.get("tables", 0),
+                    "parsing_method": "dolphin_remote"
+                },
+                table_extractions=None,
+                parsing_method="dolphin_remote"
+            )
+
             result = ParseResponse(
                 success=True,
                 filename=request.filename,
@@ -189,6 +254,30 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
 
             # Build result
             from app.models import ParseResponse, ParsingMetadata
+
+            strategy = f'MinerU ({"with OCR" if opts.mineru_use_ocr else "no OCR"})'
+
+            # Save to database
+            save_parsing_success(
+                db=db,
+                db_document=db_document,
+                strategy=strategy,
+                output_structure={
+                    "output_dir": str(doc_output_dir),
+                    "content_file": str(doc_output_dir / "content.md"),
+                    "images_dir": str(doc_output_dir / "images"),
+                    "tables_dir": None
+                },
+                duration_seconds=time.time() - start_time,
+                options=opts,
+                table_summary={
+                    "total_tables": metadata.get("tables", 0),
+                    "parsing_method": "mineru"
+                },
+                table_extractions=None,
+                parsing_method="mineru"
+            )
+
             result = ParseResponse(
                 success=True,
                 filename=request.filename,
@@ -227,6 +316,16 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
     except Exception as e:
         logger.error(f"Background parsing job {job_id} failed: {str(e)}", exc_info=True)
         job_manager.set_error(job_id, str(e))
+
+        # Save failure to database
+        save_parsing_failure(
+            db=db,
+            db_document=db_document,
+            strategy=strategy if 'strategy' in locals() else None,
+            error_message=str(e),
+            duration_seconds=time.time() - start_time,
+            options=request.get_options()
+        )
 
 
 @router.post("/parse/async")

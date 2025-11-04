@@ -25,6 +25,9 @@ import os
 
 logger = logging.getLogger(__name__)
 
+# Import standardized logging utility
+from app.utils.logging_utils import ParserLogger, log_resource_available, log_resource_unavailable
+
 # MinerU/magic-pdf 라이브러리 import
 MINERU_AVAILABLE = False
 MINERU_VERSION = "unknown"
@@ -38,10 +41,9 @@ try:
 
     MINERU_AVAILABLE = True
     MINERU_VERSION = "magic-pdf-1.3"
-    logger.info("✅ MinerU loaded: magic-pdf 1.3+ (PymuDocDataset)")
+    log_resource_available(logger, "MinerU", version=MINERU_VERSION, package="magic-pdf 1.3+")
 except ImportError as e:
-    logger.warning(f"⚠️ MinerU not installed. Run: pip install magic-pdf[full]")
-    logger.warning(f"   Error: {str(e)}")
+    log_resource_unavailable(logger, "MinerU", error=str(e), install_command="pip install magic-pdf[full]")
     MINERU_AVAILABLE = False
 
 
@@ -78,7 +80,17 @@ def parse_with_mineru(
             "  pip install magic-pdf[full]"
         )
 
-    logger.info(f"🔮 MinerU parsing: {file_path.name} (version={MINERU_VERSION}, lang={lang}, ocr={use_ocr})")
+    # Initialize standardized logger
+    parser_logger = ParserLogger("MinerU", logger)
+
+    # Log parser start with configuration
+    parser_logger.start(
+        file_path.name,
+        version=MINERU_VERSION,
+        language=lang,
+        ocr_enabled=use_ocr,
+        output_format=output_format
+    )
 
     try:
         # 출력 디렉토리 생성 (지정되지 않으면 기본 경로 사용)
@@ -105,8 +117,8 @@ def parse_with_mineru(
 
         # PymuDocDataset 생성
         if progress_callback:
-            progress_callback(20, "📄 Step 1/4: Creating dataset...")
-        logger.info("  Step 1/4: Creating dataset...")
+            progress_callback(20, "Step 1/4: Creating dataset...")
+        parser_logger.step(1, 4, "Creating dataset...")
         ds = PymuDocDataset(pdf_bytes, lang=ocr_lang)
 
         # FileBasedDataWriter 생성
@@ -115,8 +127,8 @@ def parse_with_mineru(
 
         # Document 분석
         if progress_callback:
-            progress_callback(40, "🔍 Step 2/4: Analyzing document...")
-        logger.info("  Step 2/4: Analyzing document...")
+            progress_callback(40, "Step 2/4: Analyzing document...")
+        parser_logger.step(2, 4, "Analyzing document...")
         # formula_enable=False: 수식 인식 비활성화 (transformers 호환성 문제 회피)
         # table_enable=True: 표 인식 활성화 (HTML 변환)
         # layout_model="doclayout_yolo": YOLOv8 기반 모델 사용 (detectron2 불필요)
@@ -131,8 +143,8 @@ def parse_with_mineru(
 
         # 파이프라인 실행 (OCR 모드 or TXT 모드)
         if progress_callback:
-            progress_callback(70, "⚙️ Step 3/4: Processing pipeline...")
-        logger.info("  Step 3/4: Processing pipeline...")
+            progress_callback(70, "Step 3/4: Processing pipeline...")
+        parser_logger.step(3, 4, "Processing pipeline...")
         if use_ocr:
             pipe_result = infer_result.pipe_ocr_mode(
                 image_writer,
@@ -148,8 +160,8 @@ def parse_with_mineru(
 
         # Markdown 생성
         if progress_callback:
-            progress_callback(90, "📝 Step 4/4: Generating markdown...")
-        logger.info("  Step 4/4: Generating markdown...")
+            progress_callback(90, "Step 4/4: Generating markdown...")
+        parser_logger.step(4, 4, "Generating markdown...")
         # dump_md() signature: dump_md(writer, file_path, image_dir)
         pipe_result.dump_md(md_writer, "content.md", str(image_dir))
 
@@ -178,10 +190,12 @@ def parse_with_mineru(
             "ocr_enabled": use_ocr
         }
 
-        logger.info(
-            f"✅ MinerU: {metadata['tables']} tables, "
-            f"{metadata['images']} images, "
-            f"{metadata['formulas']} formulas"
+        parser_logger.success(
+            "Parsing complete",
+            tables=metadata['tables'],
+            images=metadata['images'],
+            formulas=metadata['formulas'],
+            pages=metadata['pages']
         )
 
         # 출력 형식 변환
@@ -198,14 +212,13 @@ def parse_with_mineru(
         # Model weights not found - provide clear installation instructions
         error_msg = str(e)
         if "yolo_v8_ft.pt" in error_msg or "models" in error_msg.lower():
-            logger.error("❌ MinerU model weights not found!")
-            logger.error("   MinerU requires downloading AI models (~2-3GB) before first use.")
-            logger.error("")
-            logger.error("   Quick fix:")
-            logger.error("   1. Run: python backend/download_mineru_models.py")
-            logger.error("   2. Or run: magic-pdf --download-models")
-            logger.error("")
-            logger.error(f"   Original error: {error_msg}")
+            parser_logger.error(
+                "MinerU model weights not found",
+                exc_info=False,
+                solution="Download models with: magic-pdf --download-models",
+                alternative="Or run: python backend/download_mineru_models.py",
+                error=error_msg
+            )
 
             raise ImportError(
                 "MinerU model weights not found. "
@@ -214,11 +227,11 @@ def parse_with_mineru(
                 f"(Missing: {error_msg})"
             )
         else:
-            logger.error(f"❌ MinerU file error: {str(e)}", exc_info=True)
+            parser_logger.error(f"MinerU file error: {str(e)}", exc_info=True)
             raise
 
     except Exception as e:
-        logger.error(f"❌ MinerU parsing failed: {str(e)}", exc_info=True)
+        parser_logger.error(f"MinerU parsing failed: {str(e)}", exc_info=True)
         raise
 
 
