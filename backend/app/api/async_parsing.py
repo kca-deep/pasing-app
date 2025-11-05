@@ -24,6 +24,10 @@ from app.utils.parsing_db import (
     save_parsing_success,
     save_parsing_failure
 )
+from app.utils.file_utils import (
+    generate_version_folder_name,
+    create_versioned_output_dir
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,8 +44,7 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
     """
     from app.config import DOCU_FOLDER, OUTPUT_FOLDER
     from app.services.mineru_parser import parse_with_mineru, MINERU_AVAILABLE
-    from app.services.remote_ocr_parser import parse_with_remote_ocr
-    from app.services.remote_ocr import REMOTE_OCR_AVAILABLE
+    from app.services.remote_ocr_parser import parse_with_remote_ocr, REMOTE_OCR_AVAILABLE
     from pathlib import Path
 
     start_time = time.time()
@@ -74,9 +77,23 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
 
         # Remote OCR parsing (Korean optimized, scanned PDFs/images)
         if opts.use_remote_ocr and REMOTE_OCR_AVAILABLE:
-            doc_name = file_path.stem
-            doc_output_dir = OUTPUT_FOLDER / doc_name
-            doc_output_dir.mkdir(parents=True, exist_ok=True)
+            strategy = f'Remote OCR ({opts.remote_ocr_engine or "paddleocr"})'
+
+            # Generate version folder name
+            version_folder = generate_version_folder_name(
+                strategy=strategy,
+                options={
+                    "remote_ocr_engine": opts.remote_ocr_engine or "paddleocr",
+                    "remote_ocr_languages": opts.remote_ocr_languages or ["kor", "eng"]
+                }
+            )
+
+            # Create versioned output directory
+            doc_output_dir = create_versioned_output_dir(
+                file_path=file_path,
+                base_dir=OUTPUT_FOLDER,
+                version_folder=version_folder
+            )
 
             # Run Remote OCR in separate thread to avoid blocking event loop
             update_progress(15, "Starting Remote OCR processing...")
@@ -94,8 +111,6 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
             # Build result
             from app.models import ParseResponse, ParsingMetadata
 
-            strategy = f'Remote OCR ({opts.remote_ocr_engine or "paddleocr"})'
-
             # Save to database
             save_parsing_success(
                 db=db,
@@ -109,6 +124,7 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
                 },
                 duration_seconds=time.time() - start_time,
                 options=opts,
+                version_folder=version_folder,
                 table_summary={
                     "parsing_method": "remote_ocr",
                     "ocr_engine": opts.remote_ocr_engine or "paddleocr",
@@ -156,9 +172,24 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
 
         elif is_pdf and opts.use_dolphin and DOLPHIN_REMOTE_AVAILABLE:
             # Dolphin Remote GPU parsing with progress tracking
-            doc_name = file_path.stem
-            doc_output_dir = OUTPUT_FOLDER / doc_name
-            doc_output_dir.mkdir(parents=True, exist_ok=True)
+            strategy = f'Dolphin Remote GPU ({opts.dolphin_parsing_level or "normal"})'
+
+            # Generate version folder name
+            version_folder = generate_version_folder_name(
+                strategy=strategy,
+                options={
+                    "dolphin_parsing_level": opts.dolphin_parsing_level or "normal",
+                    "dolphin_max_batch_size": opts.dolphin_max_batch_size,
+                    "output_format": opts.output_format
+                }
+            )
+
+            # Create versioned output directory
+            doc_output_dir = create_versioned_output_dir(
+                file_path=file_path,
+                base_dir=OUTPUT_FOLDER,
+                version_folder=version_folder
+            )
 
             # Run Dolphin Remote in separate thread to avoid blocking event loop
             content, metadata = await asyncio.to_thread(
@@ -174,8 +205,6 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
             # Build result
             from app.models import ParseResponse, ParsingMetadata
 
-            strategy = f'Dolphin Remote GPU ({opts.dolphin_parsing_level or "normal"})'
-
             # Save to database
             save_parsing_success(
                 db=db,
@@ -189,6 +218,7 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
                 },
                 duration_seconds=time.time() - start_time,
                 options=opts,
+                version_folder=version_folder,
                 table_summary={
                     "total_tables": metadata.get("tables", 0),
                     "parsing_method": "dolphin_remote"
@@ -237,9 +267,24 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
 
         elif is_pdf and opts.use_mineru and MINERU_AVAILABLE:
             # MinerU parsing with progress tracking
-            doc_name = file_path.stem
-            doc_output_dir = OUTPUT_FOLDER / doc_name
-            doc_output_dir.mkdir(parents=True, exist_ok=True)
+            strategy = f'MinerU ({"with OCR" if opts.mineru_use_ocr else "no OCR"})'
+
+            # Generate version folder name
+            version_folder = generate_version_folder_name(
+                strategy=strategy,
+                options={
+                    "mineru_use_ocr": opts.mineru_use_ocr,
+                    "mineru_lang": opts.mineru_lang,
+                    "output_format": opts.output_format
+                }
+            )
+
+            # Create versioned output directory
+            doc_output_dir = create_versioned_output_dir(
+                file_path=file_path,
+                base_dir=OUTPUT_FOLDER,
+                version_folder=version_folder
+            )
 
             # Run blocking MinerU parser in separate thread to avoid blocking event loop
             content, metadata = await asyncio.to_thread(
@@ -255,8 +300,6 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
             # Build result
             from app.models import ParseResponse, ParsingMetadata
 
-            strategy = f'MinerU ({"with OCR" if opts.mineru_use_ocr else "no OCR"})'
-
             # Save to database
             save_parsing_success(
                 db=db,
@@ -270,6 +313,7 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
                 },
                 duration_seconds=time.time() - start_time,
                 options=opts,
+                version_folder=version_folder,
                 table_summary={
                     "total_tables": metadata.get("tables", 0),
                     "parsing_method": "mineru"
@@ -324,7 +368,8 @@ async def _run_parsing_job(job_id: str, request: ParseRequest, db: Session):
             strategy=strategy if 'strategy' in locals() else None,
             error_message=str(e),
             duration_seconds=time.time() - start_time,
-            options=request.get_options()
+            options=request.get_options(),
+            version_folder=version_folder if 'version_folder' in locals() else None
         )
 
 

@@ -124,6 +124,15 @@ The parsing logic follows a priority-based strategy selection:
 
 **Utilities** (`backend/app/utils/`):
 - `logging_utils.py` - Standardized logging utility with `ParserLogger` class
+- `file_utils.py` - File and output structure management utilities
+  - `create_document_output_dir()` - Creates document-specific output directories
+  - `OutputStructure` - Data class for standardized output structure
+  - `build_output_structure()` - Builds output structure with optional tables/images
+  - `save_parsing_output()` - Saves parsing results with metadata
+- `parsing_db.py` - Database helper functions for parsing operations
+  - `create_or_update_document_record()` - Creates/updates Document records
+  - `save_parsing_success()` - Saves successful parsing results to DB
+  - `save_parsing_failure()` - Saves failed parsing attempts to DB
 
 **Database** (`backend/app/`):
 - `database.py` - SQLAlchemy session management
@@ -417,3 +426,53 @@ When writing tests:
 - VLM picture description requires significant processing time
 - Large files (>100MB) may timeout; use async parsing endpoint instead
 - MinerU installation requires `pip install magic-pdf[full]` (large dependency)
+
+## Code Quality & Refactoring
+
+### Current Refactoring Status
+
+The codebase is undergoing systematic refactoring to improve maintainability and extensibility. See `prompts/plan.md` for the complete refactoring plan.
+
+**✅ Phase 1 Completed (2025-11-05)**:
+
+*Task 1.1: locals() Anti-pattern Removal*
+- All variables in `parsing.py` explicitly initialized with type hints (lines 50-60)
+- Removed locals() dictionary checks
+- Improved IDE support and type safety
+
+*Task 1.2: Code Deduplication*
+- Created `backend/app/utils/file_utils.py` with reusable functions:
+  - `create_document_output_dir()` - Output directory creation
+  - `OutputStructure` data class - Standardized output structure
+  - `build_output_structure()` - Output structure builder
+  - Eliminates duplicate code (4 locations → 1 function)
+- Created `backend/app/utils/parsing_db.py` for database operations:
+  - `create_or_update_document_record()` - Document record management
+  - `save_parsing_success()` / `save_parsing_failure()` - Parsing result handling
+
+*Task 1.3: Code Cleanup*
+- Removed unused imports (`os`, `crud`, `schemas`, `OutputStructure`, etc.)
+- Fixed `doc_name` undefined variable bug in table extraction
+- Applied `isort` for import sorting
+- Applied `black` for code formatting
+- Passed `flake8` linter checks
+
+*Verification*:
+- API imports verified (all endpoints load successfully)
+- Backend server tested (successful startup and request handling)
+- Flake8 linter: ✅ Passed
+- Type safety: Improved with explicit type hints
+
+**📝 Upcoming (Phase 2)**:
+- Strategy Pattern implementation for parsing engines
+- Feature Flag system for safe migration
+- Centralized configuration management
+- Standardized error handling
+
+**Key Improvements from Phase 1**:
+- Better type safety and IDE support
+- Reduced code duplication (~20% reduction in parsing.py)
+- Consistent output structure handling
+- Improved maintainability
+
+For detailed refactoring checklist and progress tracking, see `prompts/plan.md`.

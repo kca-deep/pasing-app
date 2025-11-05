@@ -48,37 +48,9 @@ class DocumentSchema(DocumentBase):
     model_config = ConfigDict(from_attributes=True)
 
 
-# Chunk schemas
-class ChunkBase(BaseModel):
-    document_id: int
-    chunk_id: str
-    chunk_index: int
-    heading_level: Optional[int] = None
-    heading_text: Optional[str] = None
-    content_preview: Optional[str] = None
-    char_count: Optional[int] = None
-    word_count: Optional[int] = None
-    page_start: Optional[int] = None
-    page_end: Optional[int] = None
-    has_table: bool = False
-    has_image: bool = False
-
-
-class ChunkCreate(ChunkBase):
-    pass
-
-
-class ChunkSchema(ChunkBase):
-    id: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # Table schemas
 class TableBase(BaseModel):
     document_id: int
-    chunk_id: Optional[int] = None
     table_id: str
     table_index: int
     page: Optional[int] = None
@@ -114,10 +86,18 @@ class ParsingHistoryBase(BaseModel):
     parsing_status: str
     parsing_strategy: Optional[str] = None
     options_json: Optional[str] = None
-    total_chunks: Optional[int] = None
+    # Version management fields (NEW)
+    version_folder: Optional[str] = None
+    output_dir: Optional[str] = None
+    content_path: Optional[str] = None
+    metadata_path: Optional[str] = None
+    is_latest: Optional[bool] = True
+    # Statistics
     total_tables: Optional[int] = None
     markdown_tables: Optional[int] = None
     json_tables: Optional[int] = None
+    total_images: Optional[int] = None
+    # Error and duration
     error_message: Optional[str] = None
     duration_seconds: Optional[float] = None
 
@@ -159,8 +139,7 @@ class PictureSchema(PictureBase):
 
 # Combined response schemas
 class DocumentDetailSchema(DocumentSchema):
-    """Document with related data (chunks, tables, etc.)"""
-    chunks: List[ChunkSchema] = []
+    """Document with related data (tables, history, etc.)"""
     tables: List[TableSchema] = []
     parsing_history: List[ParsingHistorySchema] = []
     pictures: List[PictureSchema] = []

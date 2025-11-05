@@ -12,6 +12,8 @@ import { FileText, Upload, Clock, Table2, ArrowRight, FileIcon, Sparkles, Zap, S
 import { getParsedDocuments } from '@/lib/api';
 
 interface ParsedDocument {
+  id: number;  // Parsing History ID (unique across all versions)
+  document_id: number;  // Document ID (same for all versions of same file)
   document_name: string;
   parsed_at: number;
   size_kb: number;
@@ -175,7 +177,7 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {documents.map((doc, index) => (
                 <Card
-                  key={doc.document_name}
+                  key={doc.id}
                   className={`
                     group
                     animate-fade-in-up

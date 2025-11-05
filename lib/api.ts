@@ -151,6 +151,8 @@ export async function getParsingStatus(jobId: string): Promise<{
 export async function getParsedDocuments(): Promise<{
   total: number;
   documents: Array<{
+    id: number;  // Parsing History ID (unique across all versions)
+    document_id: number;  // Document ID (same for all versions of same file)
     document_name: string;
     parsed_at: number;
     size_kb: number;

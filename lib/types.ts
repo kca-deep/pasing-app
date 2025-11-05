@@ -8,7 +8,6 @@ export interface DocumentInfo {
 
 export interface ParseOptions {
   // Parsing Strategy
-  use_dolphin?: boolean;  // Use Dolphin (AI-Powered parser)
   use_mineru?: boolean;   // Use MinerU (Universal PDF parser)
   use_camelot?: boolean;  // Use Camelot for table extraction
   use_remote_ocr?: boolean;  // Use Remote OCR service
@@ -16,22 +15,21 @@ export interface ParseOptions {
   // General options
   do_ocr?: boolean;
   ocr_engine?: 'easyocr' | 'tesseract';  // Local OCR engine for Docling
+  table_mode?: 'fast' | 'accurate';  // Table extraction accuracy
   output_format?: 'markdown' | 'html' | 'json';
   extract_tables?: boolean;
   save_to_output_folder?: boolean;
+  tables_as_html?: boolean;  // Export tables as HTML format
+  do_cell_matching?: boolean;  // Enable Docling cell matching
 
   // Remote OCR options
-  remote_ocr_engine?: 'tesseract' | 'paddleocr' | 'dolphin';
+  remote_ocr_engine?: 'tesseract' | 'paddleocr';
   remote_ocr_languages?: string[];
 
   // Camelot options (PDF only)
   camelot_mode?: 'lattice' | 'stream' | 'hybrid';
   camelot_pages?: string;
   camelot_accuracy_threshold?: number;
-
-  // Dolphin options (AI-Powered via Remote GPU)
-  dolphin_parsing_level?: 'page' | 'element' | 'layout';
-  dolphin_max_batch_size?: number;
 
   // MinerU options (Universal)
   mineru_lang?: 'auto' | 'ko' | 'zh' | 'en' | 'ja';
@@ -48,15 +46,14 @@ export interface ParseRequest {
 }
 
 export interface ParsingMetadata {
-  parser_used: string;  // "docling", "mineru", "dolphin", "camelot", "remote_ocr"
+  parser_used: string;  // "docling", "mineru", "camelot", "remote_ocr"
   table_parser?: string;  // "docling", "camelot", "mineru"
   ocr_enabled: boolean;
-  ocr_engine?: string;  // "easyocr", "remote-tesseract", "remote-paddleocr", "remote-dolphin"
+  ocr_engine?: string;  // "easyocr", "remote-tesseract", "remote-paddleocr"
   output_format: string;
 
   // Parser-specific options used
   camelot_mode?: string;  // "lattice", "stream", "hybrid"
-  dolphin_parsing_level?: string;  // "page", "element", "layout"
   mineru_lang?: string;  // "auto", "ko", "zh", "en", "ja"
 
   // Additional features used

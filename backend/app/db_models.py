@@ -41,48 +41,12 @@ class Document(Base):
     manifest_json_path = Column(String)  # output/{doc_name}/manifest.json
 
     # Relationships
-    chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
     tables = relationship("Table", back_populates="document", cascade="all, delete-orphan")
     parsing_history = relationship("ParsingHistory", back_populates="document", cascade="all, delete-orphan")
     pictures = relationship("Picture", back_populates="document", cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Document(id={self.id}, filename='{self.filename}', status='{self.parsing_status}')>"
-
-
-class Chunk(Base):
-    """
-    Document chunk metadata table.
-    Stores information about document chunks (sections based on headings).
-    """
-    __tablename__ = "chunks"
-    __table_args__ = (
-        UniqueConstraint("document_id", "chunk_id", name="uq_document_chunk"),
-        Index("idx_chunks_document_id", "document_id"),
-        Index("idx_chunks_chunk_id", "chunk_id"),
-    )
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    chunk_id = Column(String, nullable=False)  # chunk_001, chunk_002, ...
-    chunk_index = Column(Integer, nullable=False)
-    heading_level = Column(Integer)  # 1-6 for H1-H6, null for text without heading
-    heading_text = Column(String)
-    content_preview = Column(String)  # First 200 characters
-    char_count = Column(Integer)
-    word_count = Column(Integer)
-    page_start = Column(Integer)
-    page_end = Column(Integer)
-    has_table = Column(Boolean, default=False)
-    has_image = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Relationships
-    document = relationship("Document", back_populates="chunks")
-    tables = relationship("Table", back_populates="chunk")
-
-    def __repr__(self):
-        return f"<Chunk(id={self.id}, chunk_id='{self.chunk_id}', heading='{self.heading_text}')>"
 
 
 class Table(Base):
@@ -99,7 +63,6 @@ class Table(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    chunk_id = Column(Integer, ForeignKey("chunks.id", ondelete="SET NULL"), nullable=True)
     table_id = Column(String, nullable=False)  # table_001, table_002, ...
     table_index = Column(Integer, nullable=False)
     page = Column(Integer)
@@ -116,7 +79,6 @@ class Table(Base):
 
     # Relationships
     document = relationship("Document", back_populates="tables")
-    chunk = relationship("Chunk", back_populates="tables")
 
     def __repr__(self):
         return f"<Table(id={self.id}, table_id='{self.table_id}', rows={self.rows}, cols={self.cols})>"
@@ -125,22 +87,34 @@ class Table(Base):
 class ParsingHistory(Base):
     """
     Parsing history table.
-    Tracks all parsing attempts for documents.
+    Tracks all parsing attempts for documents with version management.
     """
     __tablename__ = "parsing_history"
     __table_args__ = (
         Index("idx_parsing_history_document_id", "document_id"),
+        Index("idx_parsing_history_version_folder", "version_folder"),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     parsing_status = Column(String, nullable=False)  # started, completed, failed
-    parsing_strategy = Column(String)  # docling, camelot, hybrid
+    parsing_strategy = Column(String)  # docling, camelot, hybrid, remote_ocr, mineru
     options_json = Column(Text)  # JSON string of parsing options
-    total_chunks = Column(Integer)
+
+    # Version management fields (NEW)
+    version_folder = Column(String)  # 버전 폴더명 (예: "remote-ocr_upstage_20251105-163045")
+    output_dir = Column(String)  # 전체 출력 경로 (예: "output/doc_name/remote-ocr_upstage_20251105-163045")
+    content_path = Column(String)  # content.md 경로
+    metadata_path = Column(String)  # metadata.json 경로
+    is_latest = Column(Boolean, default=True)  # 최신 버전 여부
+
+    # Table/Image statistics
     total_tables = Column(Integer)
     markdown_tables = Column(Integer)
     json_tables = Column(Integer)
+    total_images = Column(Integer)
+
+    # Error and duration
     error_message = Column(Text)
     duration_seconds = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -149,7 +123,7 @@ class ParsingHistory(Base):
     document = relationship("Document", back_populates="parsing_history")
 
     def __repr__(self):
-        return f"<ParsingHistory(id={self.id}, document_id={self.document_id}, status='{self.parsing_status}')>"
+        return f"<ParsingHistory(id={self.id}, document_id={self.document_id}, version='{self.version_folder}', status='{self.parsing_status}')>"
 
 
 class Picture(Base):
@@ -165,7 +139,6 @@ class Picture(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
-    chunk_id = Column(Integer, ForeignKey("chunks.id", ondelete="SET NULL"), nullable=True)
     picture_id = Column(String, nullable=False)  # picture_001, picture_002, ...
     page = Column(Integer)
     width = Column(Integer)

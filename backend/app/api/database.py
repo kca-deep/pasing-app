@@ -62,20 +62,18 @@ async def get_document_detail(document_id: int, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Document not found")
 
         # Get related data
-        chunks = crud.get_chunks_by_document_id(db, document_id)
         tables = crud.get_tables_by_document_id(db, document_id)
         history = crud.get_parsing_history(db, document_id)
         pictures = crud.get_pictures_by_document_id(db, document_id)
 
         # Create detailed response
         doc_dict = schemas.DocumentSchema.model_validate(document).model_dump()
-        doc_dict["chunks"] = [schemas.ChunkSchema.model_validate(c) for c in chunks]
         doc_dict["tables"] = [schemas.TableSchema.model_validate(t) for t in tables]
         doc_dict["parsing_history"] = [schemas.ParsingHistorySchema.model_validate(h) for h in history]
         doc_dict["pictures"] = [schemas.PictureSchema.model_validate(p) for p in pictures]
 
         # Add counts
-        doc_dict["chunk_count"] = len(chunks)
+        doc_dict["chunk_count"] = 0
         doc_dict["table_count"] = len(tables)
         doc_dict["picture_count"] = len(pictures)
 
@@ -84,28 +82,6 @@ async def get_document_detail(document_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         logger.error(f"Error getting document detail: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/db/documents/{document_id}/chunks", response_model=List[schemas.ChunkSchema])
-async def get_document_chunks(document_id: int, db: Session = Depends(get_db)):
-    """
-    Get all chunks for a specific document.
-
-    - **document_id**: Document ID from database
-    """
-    try:
-        # Check if document exists
-        document = crud.get_document_by_id(db, document_id)
-        if not document:
-            raise HTTPException(status_code=404, detail="Document not found")
-
-        chunks = crud.get_chunks_by_document_id(db, document_id)
-        return [schemas.ChunkSchema.model_validate(c) for c in chunks]
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting document chunks: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

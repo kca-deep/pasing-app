@@ -71,12 +71,13 @@ def save_parsing_success(
     output_structure: Optional[Dict[str, Any]],
     duration_seconds: float,
     options: Any,
+    version_folder: Optional[str] = None,
     table_summary: Optional[Dict[str, Any]] = None,
     table_extractions: Optional[List[Dict[str, Any]]] = None,
     parsing_method: str = "docling"
 ) -> bool:
     """
-    Save parsing success to database.
+    Save parsing success to database with version management.
 
     Updates Document record to completed status and creates ParsingHistory.
     Optionally saves Table metadata if table_extractions provided.
@@ -88,6 +89,7 @@ def save_parsing_success(
         output_structure: Output folder structure dict
         duration_seconds: Parsing duration in seconds
         options: Parsing options (TableParsingOptions or dict)
+        version_folder: Version folder name (NEW - for version management)
         table_summary: Table summary dict (optional)
         table_extractions: List of extracted tables (optional)
         parsing_method: Table parsing method ("camelot" or "docling")
@@ -140,7 +142,19 @@ def save_parsing_success(
             except Exception as e:
                 logger.error(f"Error saving table metadata: {str(e)}", exc_info=True)
 
-        # Create ParsingHistory record
+        # Mark previous versions as not latest
+        if version_folder:
+            try:
+                from app import db_models
+                db.query(db_models.ParsingHistory).filter(
+                    db_models.ParsingHistory.document_id == db_document.id,
+                    db_models.ParsingHistory.is_latest == True
+                ).update({"is_latest": False})
+                db.commit()
+            except Exception as e:
+                logger.warning(f"Error updating previous versions: {str(e)}")
+
+        # Create ParsingHistory record with version info
         try:
             # Convert options to dict if needed
             if hasattr(options, 'model_dump'):
@@ -155,13 +169,19 @@ def save_parsing_success(
                 parsing_status="completed",
                 parsing_strategy=strategy,
                 options_json=options_json,
+                version_folder=version_folder,
+                output_dir=output_structure.get("output_dir") if output_structure else None,
+                content_path=output_structure.get("content_file") if output_structure else None,
+                metadata_path=str(Path(output_structure.get("output_dir")) / "metadata.json") if output_structure else None,
+                is_latest=True,
                 total_tables=table_summary.get("total_tables", 0) if table_summary else 0,
                 markdown_tables=table_summary.get("markdown_tables", 0) if table_summary else 0,
                 json_tables=table_summary.get("json_tables", 0) if table_summary else 0,
+                total_images=table_summary.get("total_images", 0) if table_summary else 0,
                 duration_seconds=duration_seconds
             )
             crud.create_parsing_history(db, history_create)
-            logger.info(f"  💾 Created parsing history record (duration: {duration_seconds:.2f}s)")
+            logger.info(f"  💾 Created parsing history record (version: {version_folder}, duration: {duration_seconds:.2f}s)")
         except Exception as e:
             logger.error(f"Error creating parsing history: {str(e)}", exc_info=True)
 
@@ -178,10 +198,11 @@ def save_parsing_failure(
     strategy: Optional[str],
     error_message: str,
     duration_seconds: float,
-    options: Any
+    options: Any,
+    version_folder: Optional[str] = None
 ) -> bool:
     """
-    Save parsing failure to database.
+    Save parsing failure to database with version management.
 
     Updates Document record to failed status and creates ParsingHistory with error.
 
@@ -192,6 +213,7 @@ def save_parsing_failure(
         error_message: Error message string
         duration_seconds: Parsing duration in seconds
         options: Parsing options (TableParsingOptions or dict)
+        version_folder: Version folder name (NEW - for version management)
 
     Returns:
         True if successful, False otherwise
@@ -221,11 +243,13 @@ def save_parsing_failure(
                 parsing_status="failed",
                 parsing_strategy=strategy if strategy else "unknown",
                 options_json=options_json,
+                version_folder=version_folder,
+                is_latest=False,  # Failed attempts are not marked as latest
                 error_message=error_message,
                 duration_seconds=duration_seconds
             )
             crud.create_parsing_history(db, history_create)
-            logger.info(f"  💾 Updated document to failed status and created error history")
+            logger.info(f"  💾 Updated document to failed status and created error history (version: {version_folder})")
         except Exception as e:
             logger.error(f"Error creating error history: {str(e)}", exc_info=True)
 

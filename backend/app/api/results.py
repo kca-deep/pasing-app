@@ -36,36 +36,57 @@ def _map_strategy_to_parser(strategy: str) -> str:
 
 
 @router.get("/parsed-documents")
-async def list_parsed_documents(db: Session = Depends(get_db)):
-    """List all parsed documents from database with file metadata enrichment"""
+async def list_parsed_documents(
+    db: Session = Depends(get_db),
+    show_all_versions: bool = True  # Show all parsing versions by default
+):
+    """
+    List all parsed documents from database with version support.
+
+    Args:
+        show_all_versions: If True, show all parsing versions. If False, show only latest version per document.
+    """
     logger.info("=" * 80)
-    logger.info("🔵 RESULTS.PY CODE VERSION: 2024-10-29-v4 DATABASE-FIRST WITH FILE ENRICHMENT")
+    logger.info("🔵 RESULTS.PY CODE VERSION: 2025-11-05 VERSION-AWARE LISTING")
     logger.info("=" * 80)
     try:
-        # Query documents from database with counts (completed status only)
-        db_documents = crud.list_documents_with_counts(
-            db,
-            limit=100,
-            status="completed",
-            order_by="last_parsed_at"
-        )
+        from app import db_models
 
-        logger.info(f"📊 Found {len(db_documents)} completed documents in database")
+        # Query parsing histories with completed status
+        if show_all_versions:
+            # Show all completed parsing attempts
+            query = db.query(db_models.ParsingHistory).filter(
+                db_models.ParsingHistory.parsing_status == "completed"
+            ).order_by(db_models.ParsingHistory.created_at.desc())
+        else:
+            # Show only latest version per document
+            query = db.query(db_models.ParsingHistory).filter(
+                db_models.ParsingHistory.parsing_status == "completed",
+                db_models.ParsingHistory.is_latest == True
+            ).order_by(db_models.ParsingHistory.created_at.desc())
+
+        parsing_histories = query.limit(100).all()
+
+        logger.info(f"📊 Found {len(parsing_histories)} parsing histories (show_all_versions={show_all_versions})")
 
         parsed_docs = []
 
-        for doc_info in db_documents:
-            document = doc_info["document"]
-            chunk_count = doc_info["chunk_count"]
-            table_count = doc_info["table_count"]
-            picture_count = doc_info["picture_count"]
+        for history in parsing_histories:
+            # Get associated document
+            document = crud.get_document_by_id(db, history.document_id)
+            if not document:
+                continue
+
+            # Get table count for this specific version
+            table_count = history.json_tables or 0
+            picture_count = history.total_images or 0
 
             # Get file preview if content file exists
             preview = ""
             content_size_kb = 0
 
-            if document.content_md_path:
-                content_file = Path(document.content_md_path)
+            if history.content_path:
+                content_file = Path(history.content_path)
                 if content_file.exists():
                     try:
                         # Read first few lines for preview
@@ -81,26 +102,28 @@ async def list_parsed_documents(db: Session = Depends(get_db)):
 
             # Load parsing metadata if available
             parsing_metadata = None
-            if document.output_folder:
-                metadata_file = Path(document.output_folder) / "metadata.json"
-                if metadata_file.exists():
-                    try:
-                        with open(metadata_file, 'r', encoding='utf-8') as mf:
-                            parsing_metadata = json.load(mf)
-                    except Exception as e:
-                        logger.error(f"Error loading metadata for {document.filename}: {str(e)}")
+            if history.metadata_path and Path(history.metadata_path).exists():
+                try:
+                    with open(history.metadata_path, 'r', encoding='utf-8') as mf:
+                        parsing_metadata = json.load(mf)
+                except Exception as e:
+                    logger.error(f"Error loading metadata for {document.filename}: {str(e)}")
 
-            # If no metadata file, generate from database
-            if not parsing_metadata and document.parsing_strategy:
-                parsing_metadata = {
-                    "parser_used": _map_strategy_to_parser(document.parsing_strategy),
-                    "table_parser": None,
-                    "ocr_enabled": False,
-                    "ocr_engine": None,
-                    "output_format": "markdown",
-                    "picture_description_enabled": False,
-                    "auto_image_analysis_enabled": False
-                }
+            # If no metadata file, generate from options_json
+            if not parsing_metadata and history.options_json:
+                try:
+                    options = json.loads(history.options_json)
+                    parsing_metadata = {
+                        "parser_used": _map_strategy_to_parser(history.parsing_strategy),
+                        "table_parser": options.get("table_parser"),
+                        "ocr_enabled": options.get("do_ocr", False),
+                        "ocr_engine": options.get("ocr_engine"),
+                        "output_format": options.get("output_format", "markdown"),
+                        "picture_description_enabled": options.get("do_picture_description", False),
+                        "auto_image_analysis_enabled": options.get("auto_image_analysis", False)
+                    }
+                except Exception as e:
+                    logger.error(f"Error parsing options_json: {str(e)}")
 
             # Build response object
             parsed_docs.append({
@@ -108,33 +131,40 @@ async def list_parsed_documents(db: Session = Depends(get_db)):
                 "filename": document.filename,  # Original filename as title
                 "document_name": Path(document.filename).stem,  # Name without extension
 
+                # Version info (NEW)
+                "version_folder": history.version_folder,
+                "version_id": history.id,
+                "is_latest": history.is_latest,
+
                 # Database metadata
-                "id": document.id,
+                "id": history.id,  # Parsing History ID (unique across all versions)
+                "document_id": document.id,  # Document ID (same for all versions of same file)
                 "file_extension": document.file_extension,
                 "file_size": document.file_size,  # Original file size in bytes
                 "total_pages": document.total_pages,
-                "parsing_status": document.parsing_status,
-                "parsing_strategy": document.parsing_strategy,
+                "parsing_status": history.parsing_status,
+                "parsing_strategy": history.parsing_strategy,
                 "created_at": document.created_at.timestamp() if document.created_at else None,
                 "updated_at": document.updated_at.timestamp() if document.updated_at else None,
                 "last_parsed_at": document.last_parsed_at.timestamp() if document.last_parsed_at else None,
-                "parsed_at": document.last_parsed_at.timestamp() if document.last_parsed_at else document.updated_at.timestamp(),
+                "parsed_at": history.created_at.timestamp() if history.created_at else None,
+                "duration_seconds": history.duration_seconds,
 
-                # Aggregated counts from database
-                "chunk_count": chunk_count,
+                # Version-specific counts
+                "chunk_count": 0,  # Chunk is not used
                 "table_count": table_count,
                 "picture_count": picture_count,
 
                 # File metadata
                 "size_kb": content_size_kb,  # Parsed content file size
                 "preview": preview,
-                "output_dir": document.output_folder,
+                "output_dir": history.output_dir,
 
                 # Parsing metadata
                 "parsing_metadata": parsing_metadata,
             })
 
-        logger.info(f"✅ Returning {len(parsed_docs)} documents with enriched metadata")
+        logger.info(f"✅ Returning {len(parsed_docs)} parsing results with version info")
 
         return {
             "total": len(parsed_docs),
@@ -161,11 +191,40 @@ async def get_parse_result(filename: str, db: Session = Depends(get_db)):
             # No known extension, use the full filename
             doc_name = filename
 
-        # Check output folder
-        doc_output_dir = OUTPUT_FOLDER / doc_name
-        content_file = doc_output_dir / "content.md"
+        # Try to get document from database first
+        db_doc = crud.get_document_by_filename(db, filename)
 
-        if not content_file.exists():
+        # Find content file path
+        content_file = None
+        doc_output_dir = OUTPUT_FOLDER / doc_name
+
+        # Strategy 1: Use content_md_path from database
+        if db_doc and db_doc.content_md_path:
+            content_file = Path(db_doc.content_md_path)
+            if not content_file.exists():
+                logger.warning(f"⚠️ DB content_md_path exists but file not found: {content_file}")
+                content_file = None
+
+        # Strategy 2: Check direct path (old structure)
+        if not content_file:
+            direct_path = doc_output_dir / "content.md"
+            if direct_path.exists():
+                content_file = direct_path
+
+        # Strategy 3: Find latest version folder (new structure)
+        if not content_file and doc_output_dir.exists():
+            version_folders = [d for d in doc_output_dir.iterdir() if d.is_dir()]
+            if version_folders:
+                # Sort by modification time (newest first)
+                version_folders.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+                for version_folder in version_folders:
+                    content_candidate = version_folder / "content.md"
+                    if content_candidate.exists():
+                        content_file = content_candidate
+                        doc_output_dir = version_folder  # Update to version folder
+                        break
+
+        if not content_file or not content_file.exists():
             raise HTTPException(status_code=404, detail=f"Parsed result not found for {filename}")
 
         # Read content

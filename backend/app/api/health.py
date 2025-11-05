@@ -6,8 +6,8 @@ from fastapi import APIRouter
 from app.models import ParseRequest
 from app.table_utils import CAMELOT_AVAILABLE
 from app.services.mineru_parser import check_mineru_installation
-from app.services.dolphin_remote import check_dolphin_remote_installation
-from app.services.remote_ocr import check_remote_ocr_availability
+from app.services.remote_ocr_parser import check_remote_ocr_availability
+from app.services.docling import EASYOCR_AVAILABLE
 
 router = APIRouter()
 
@@ -17,19 +17,17 @@ async def root():
     """API status check"""
     # Get parser installation status
     mineru_status = check_mineru_installation()
-    dolphin_remote_status = check_dolphin_remote_installation()
     remote_ocr_status = check_remote_ocr_availability()
 
     return {
         "status": "running",
-        "version": "2.4.0",  # Updated for Remote OCR support
+        "version": "2.5.0",  # Updated: Removed Dolphin Remote strategy
         "parsing_strategy": {
             "default": "Docling + Camelot Hybrid",
             "pdf_files": "Camelot (LATTICE + STREAM)" if CAMELOT_AVAILABLE else "Docling",
             "other_files": "Docling (DOCX, PPTX, HTML)",
             "available_parsers": {
                 "remote_ocr": remote_ocr_status["available"],
-                "dolphin_remote": dolphin_remote_status.get("installed", False),
                 "mineru": mineru_status["installed"],
                 "camelot": CAMELOT_AVAILABLE,
                 "docling": True
@@ -47,6 +45,19 @@ async def root():
             "docling": True,
             "camelot": CAMELOT_AVAILABLE,
             "camelot_default": True
+        },
+        "ocr_engines": {
+            "local": {
+                "engine": "EasyOCR",
+                "available": EASYOCR_AVAILABLE,
+                "description": "High accuracy for Korean & English (built-in)",
+                "languages": ["kor", "eng"],
+                "note": "No installation needed, works out of the box"
+            },
+            "remote": {
+                "info": "Use 'Remote OCR' strategy for Tesseract/PaddleOCR/Dolphin engines",
+                "see": "remote_ocr_parser section below"
+            }
         },
         "picture_description": {
             "available": True,
@@ -80,16 +91,6 @@ async def root():
                 "paddleocr": "High-accuracy OCR engine (~1.6s, best for Korean documents)",
                 "dolphin": "AI-powered OCR engine (~5s, highest accuracy)"
             }
-        },
-        "dolphin_remote_gpu": {
-            "available": dolphin_remote_status.get("installed", False),
-            "server_url": dolphin_remote_status.get("server_url"),
-            "server_status": dolphin_remote_status.get("server_status"),
-            "model_loaded": dolphin_remote_status.get("model_loaded", False),
-            "cuda_available": dolphin_remote_status.get("cuda_available", False),
-            "default_enabled": False,
-            "description": "Remote GPU server for Dolphin AI parser (fastest option)",
-            "note": "Requires DOLPHIN_GPU_SERVER environment variable"
         }
     }
 

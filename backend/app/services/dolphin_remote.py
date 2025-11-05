@@ -39,14 +39,20 @@ except Exception as e:
     log_resource_unavailable(logger, "Dolphin GPU Server", url=DOLPHIN_GPU_SERVER, error=str(e))
 
 
-def call_dolphin_gpu(image: Image.Image, prompt: str, max_length: int = 4096) -> str:
+def call_dolphin_gpu(
+    image: Image.Image,
+    prompt: str = "Read text in the image.",
+    max_length: int = 4096,
+    engine: str = "dolphin"
+) -> str:
     """
-    원격 GPU 서버의 Dolphin 모델 호출
+    원격 GPU 서버의 OCR 모델 호출 (Dolphin 또는 PaddleOCR)
 
     Args:
         image: PIL Image
-        prompt: 추론 프롬프트
+        prompt: 추론 프롬프트 (Dolphin용)
         max_length: 최대 생성 길이
+        engine: OCR 엔진 (dolphin, paddleocr, tesseract)
 
     Returns:
         모델 생성 텍스트
@@ -59,23 +65,39 @@ def call_dolphin_gpu(image: Image.Image, prompt: str, max_length: int = 4096) ->
     # GPU 서버 API 호출
     try:
         request_url = f"{DOLPHIN_GPU_SERVER}/ocr/extract"
-        logger.info(f"    🌐 [Remote GPU Request] POST {request_url}")
-        logger.info(f"       Prompt: {prompt[:50]}...")
+        logger.info(f"    🌐 [Remote GPU Request] POST {request_url} (engine: {engine})")
+
+        request_payload = {
+            "image_base64": image_base64,
+            "engine": engine
+        }
+
+        # Dolphin용 파라미터
+        if engine == "dolphin":
+            request_payload["prompt"] = prompt
+            request_payload["max_length"] = max_length
+        # PaddleOCR/Tesseract용 파라미터
+        else:
+            request_payload["language"] = "kor"
 
         response = requests.post(
             request_url,
-            json={
-                "prompt": prompt,
-                "image_base64": image_base64,
-                "max_length": max_length
-            },
+            json=request_payload,
             timeout=DOLPHIN_INFERENCE_TIMEOUT
         )
         response.raise_for_status()
         result = response.json()
 
-        generated_text = result.get("generated_text", result.get("text", ""))
-        logger.info(f"    ✓ [Remote GPU Response] Received {len(generated_text)} chars")
+        if not result.get("success"):
+            error_msg = result.get("error", "Unknown error")
+            raise Exception(f"OCR failed: {error_msg}")
+
+        generated_text = result.get("text", "")
+        logger.info(f"    ✓ [Remote GPU Response] Received {len(generated_text)} chars (engine: {result.get('engine_used')})")
+
+        # 응답 검증: 너무 짧거나 의미없는 응답 체크
+        if len(generated_text.strip()) < 5:
+            logger.warning(f"    ⚠️ Short/invalid response: '{generated_text}' - may indicate OCR failure")
 
         return generated_text
 
@@ -122,13 +144,7 @@ def parse_with_dolphin_remote(
             f"3. Network connection is available"
         )
 
-    from app.services.dolphin_utils import (
-        convert_pdf_to_images_pymupdf,
-        parse_layout_string,
-        crop_element_from_image,
-        get_element_prompt,
-        format_element_markdown
-    )
+    from app.services.dolphin_utils import convert_pdf_to_images_pymupdf
 
     # Initialize standardized logger
     parser_logger = ParserLogger("Dolphin Remote", logger)
@@ -167,11 +183,10 @@ def parse_with_dolphin_remote(
             progress_callback(25, f"Converted {len(images)} pages")
         parser_logger.detail(f"Converted: {len(images)} pages", last=True)
 
-        # 3. 페이지별 2단계 파싱 (GPU 서버 호출)
+        # 3. 페이지별 단순 OCR 파싱 (GPU 서버 호출)
         all_page_contents = []
-        total_elements = 0
-        total_tables = 0
-        total_formulas = 0
+        ocr_engine = "dolphin"  # 기본 엔진
+        ocr_fallback = "paddleocr"  # 폴백 엔진
 
         for page_idx, pil_image in enumerate(images):
             page_progress_start = 25 + int((page_idx / len(images)) * 65)
@@ -181,96 +196,77 @@ def parse_with_dolphin_remote(
                 progress_callback(page_progress_start, f"Processing Page {page_idx + 1}/{len(images)}")
             parser_logger.page(page_idx + 1, len(images))
 
-            # ===== STAGE 1: Layout Analysis (GPU 서버 호출) =====
-            if progress_callback:
-                progress_callback(page_progress_start + 1, f"Stage 1: Layout Analysis...")
-            parser_logger.sub_step("Stage 1: Layout Analysis (GPU)...", emoji='analysis')
+            try:
+                # 전체 페이지 OCR (GPU 서버 호출)
+                if progress_callback:
+                    progress_callback(page_progress_start + 2, f"Running OCR on page...")
+                parser_logger.sub_step("Running OCR on full page...", emoji='process')
 
-            layout_prompt = "Parse the reading order of this document."
-            layout_output = call_dolphin_gpu(pil_image, layout_prompt)
+                # Dolphin으로 먼저 시도
+                page_text = call_dolphin_gpu(
+                    pil_image,
+                    prompt="Read all text in the image.",
+                    engine=ocr_engine
+                )
 
-            # 레이아웃 파싱 (로컬)
-            layout_results = parse_layout_string(layout_output)
-            if progress_callback:
-                progress_callback(page_progress_start + 2, f"Detected {len(layout_results)} elements")
-            parser_logger.detail(f"Detected: {len(layout_results)} elements")
+                # Dolphin 응답 검증 - 너무 짧거나 의미없으면 PaddleOCR로 폴백
+                if len(page_text.strip()) < 10 or page_text.strip() in ["()", "() ()", "() ()) ()"]:
+                    parser_logger.warning(
+                        f"Dolphin returned invalid response, falling back to {ocr_fallback}",
+                        dolphin_response=page_text[:50]
+                    )
 
-            if not layout_results:
+                    # PaddleOCR로 재시도
+                    page_text = call_dolphin_gpu(
+                        pil_image,
+                        engine=ocr_fallback
+                    )
+
+                # 페이지 내용 저장
+                if page_text.strip():
+                    # 페이지 구분자와 함께 저장
+                    page_content = f"## Page {page_idx + 1}\n\n{page_text.strip()}\n\n"
+                    all_page_contents.append(page_content)
+
+                    if progress_callback:
+                        progress_callback(page_progress_end, f"Page {page_idx + 1}: {len(page_text)} chars extracted")
+                    parser_logger.detail(f"Extracted {len(page_text)} characters", last=True)
+                else:
+                    parser_logger.warning(
+                        f"No text extracted from page {page_idx + 1}"
+                    )
+
+            except Exception as e:
                 parser_logger.warning(
-                    f"No layout elements found on page {page_idx + 1}",
-                    page=page_idx + 1
+                    f"Error processing page {page_idx + 1}: {str(e)}"
                 )
                 continue
-
-            # ===== STAGE 2: Element Parsing (GPU 서버 호출) =====
-            if progress_callback:
-                progress_callback(page_progress_start + 3, f"Stage 2: Parsing elements...")
-            parser_logger.sub_step(f"Stage 2: Parsing {len(layout_results)} elements (GPU)...", emoji='process')
-
-            page_elements = []
-
-            for elem_idx, (coords, label) in enumerate(layout_results):
-                try:
-                    # 요소 영역 crop (로컬)
-                    cropped_image = crop_element_from_image(pil_image, coords)
-
-                    # 프롬프트 선택 (로컬)
-                    element_prompt = get_element_prompt(label)
-
-                    # 텍스트 추출 (GPU 서버 호출)
-                    element_text = call_dolphin_gpu(cropped_image, element_prompt)
-
-                    if element_text.strip():
-                        formatted = format_element_markdown(label, element_text)
-                        page_elements.append(formatted)
-
-                        total_elements += 1
-                        if label == "tab":
-                            total_tables += 1
-                        elif label in ["equ", "formula"]:
-                            total_formulas += 1
-
-                        # 진행 상태 업데이트
-                        element_progress = page_progress_start + 3 + int((elem_idx / len(layout_results)) * (page_progress_end - page_progress_start - 3))
-                        if progress_callback:
-                            progress_callback(element_progress, f"Parsed {elem_idx + 1}/{len(layout_results)} elements...")
-
-                except Exception as e:
-                    logger.debug(f"Error parsing element {elem_idx}: {str(e)}")
-                    continue
-
-            # 페이지 내용 통합
-            page_content = "".join(page_elements)
-            all_page_contents.append(page_content)
-
-            if progress_callback:
-                progress_callback(page_progress_end, f"Page {page_idx + 1}: {len(page_elements)} elements")
-            parser_logger.detail(f"Page {page_idx + 1}: {len(page_elements)} elements parsed", last=True)
 
         # 4. 전체 문서 통합
         if progress_callback:
             progress_callback(90, "Merging all pages...")
         parser_logger.step(4, 4, "Merging all pages...")
 
-        content = "\n\n---\n\n".join(all_page_contents)
+        content = "\n".join(all_page_contents)
 
         # 메타데이터
+        total_chars = sum(len(page) for page in all_page_contents)
         metadata = {
-            "tables": total_tables,
-            "images": 0,
-            "formulas": total_formulas,
             "pages": len(images),
-            "total_elements": total_elements,
-            "parsing_method": "dolphin_remote_gpu",
+            "pages_processed": len(all_page_contents),
+            "total_characters": total_chars,
+            "parsing_method": "dolphin_remote_simple_ocr",
+            "ocr_engine": ocr_engine,
+            "fallback_engine": ocr_fallback,
             "gpu_server": DOLPHIN_GPU_SERVER
         }
 
         parser_logger.success(
             "Parsing complete",
             pages=metadata['pages'],
-            total_elements=metadata['total_elements'],
-            tables=metadata['tables'],
-            formulas=metadata['formulas']
+            pages_processed=metadata['pages_processed'],
+            total_chars=metadata['total_characters'],
+            ocr_engine=ocr_engine
         )
 
         # 5. 저장 (옵션)

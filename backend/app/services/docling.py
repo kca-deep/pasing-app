@@ -5,6 +5,7 @@ Handles document parsing using the Docling library.
 """
 
 from pathlib import Path
+from typing import Optional, Tuple, Any
 import json
 import logging
 import os
@@ -36,10 +37,23 @@ from app.utils.logging_utils import ParserLogger
 # Docling EasyOCR 기본 언어 설정
 DEFAULT_DOCLING_OCR_LANGUAGES = os.getenv("DEFAULT_DOCLING_OCR_LANGUAGES", "ko,en").split(",")
 
+# OCR engine availability
+EASYOCR_AVAILABLE = True  # EasyOCR is always available in Docling
+logger.info("✅ [EasyOCR] Available (default OCR engine)")
 
-def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> tuple:
+
+def parse_document_with_docling(
+    file_path: Path,
+    opts: TableParsingOptions,
+    progress_callback: Optional[callable] = None
+) -> Tuple[str, Any]:
     """
     Parse document using Docling library directly (Standard PDF Pipeline only)
+
+    Args:
+        file_path: Path to document file
+        opts: Table parsing options
+        progress_callback: Optional callback function(percent, message) for progress tracking
 
     Returns:
         Tuple of (content_string, docling_document)
@@ -86,19 +100,12 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
 
             ocr_langs = opts.ocr_lang or opts.remote_ocr_languages or DEFAULT_DOCLING_OCR_LANGUAGES
 
-            # Select OCR engine based on user preference
-            if opts.ocr_engine == "tesseract":
-                pipeline_options.ocr_options = TesseractOcrOptions(lang=ocr_langs)
-            else:  # easyocr (default)
-                pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
+            # Always use EasyOCR (built-in, no installation needed)
+            pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
         else:
-            # Local OCR with engine selection
+            # Local OCR - always use EasyOCR
             ocr_langs = opts.ocr_lang or DEFAULT_DOCLING_OCR_LANGUAGES
-
-            if opts.ocr_engine == "tesseract":
-                pipeline_options.ocr_options = TesseractOcrOptions(lang=ocr_langs)
-            else:  # easyocr (default)
-                pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
+            pipeline_options.ocr_options = EasyOcrOptions(lang=ocr_langs)
 
     pipeline_options.do_table_structure = True
 
@@ -109,6 +116,10 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
         pipeline_options.table_structure_options.mode = TableFormerMode.ACCURATE
 
     pipeline_options.table_structure_options.do_cell_matching = opts.do_cell_matching
+
+    # Progress: Pipeline configured
+    if progress_callback:
+        progress_callback(10, "Pipeline configured...")
 
     # Smart Image Analysis: Auto-detect image type and apply appropriate processing
     if opts.auto_image_analysis:
@@ -176,9 +187,25 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
         }
     )
 
+    # Progress: Converter created
+    if progress_callback:
+        progress_callback(20, "Converter initialized...")
+
+    # Progress: Starting document conversion
+    if progress_callback:
+        progress_callback(30, "Converting document...")
+
     # Convert document
     result = converter.convert(file_path)
     docling_doc = result.document
+
+    # Progress: Document converted
+    if progress_callback:
+        progress_callback(80, "Document converted successfully...")
+
+    # Progress: Exporting content
+    if progress_callback:
+        progress_callback(90, "Exporting content...")
 
     # Export based on output format
     if opts.output_format == "html":
@@ -252,5 +279,9 @@ def parse_document_with_docling(file_path: Path, opts: TableParsingOptions) -> t
         content_chars=content_length,
         format=opts.output_format
     )
+
+    # Progress: Complete
+    if progress_callback:
+        progress_callback(100, "Parsing complete")
 
     return content, docling_doc

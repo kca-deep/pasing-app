@@ -53,13 +53,6 @@ class TableParsingOptions(BaseModel):
     mineru_lang: Literal["auto", "ko", "zh", "en", "ja"] = "auto"  # Language (auto = automatic detection, ko=Korean, zh=Chinese, en=English, ja=Japanese)
     mineru_use_ocr: bool = True  # Use OCR for scanned documents
 
-    # Dolphin options (ByteDance Dolphin 1.5 - AI-Powered Document Parser via Remote GPU)
-    # NOTE: Dolphin uses multimodal AI for high-accuracy parsing on remote GPU server
-    # Features: 영문 약어 정확도, 괄호 보존, 날짜 형식 유지, 고정밀도 (OmniDocBench 83.21)
-    use_dolphin: bool = False  # Use Dolphin Remote GPU for parsing (AI-powered, high accuracy)
-    dolphin_parsing_level: Literal["page", "element", "layout"] = "page"  # Parsing granularity (page=recommended, element=detailed, layout=structure)
-    dolphin_max_batch_size: int = 8  # Batch size for processing (4, 8, 16 - higher is faster but uses more memory)
-
     # Picture Description options (Vision Language Model for image analysis)
     do_picture_description: bool = False  # Enable picture description (default: False for performance)
     picture_description_model: Literal["smolvlm", "granite", "custom"] = "smolvlm"  # VLM model choice
@@ -77,8 +70,13 @@ class TableParsingOptions(BaseModel):
 
     # Remote OCR Service (http://kca-ai.kro.kr:8005/ocr/extract)
     use_remote_ocr: bool = False  # Use remote OCR service instead of local EasyOCR
-    remote_ocr_engine: Literal["tesseract", "paddleocr", "dolphin"] = "paddleocr"  # Remote OCR engine ("tesseract"=fast ~0.2s, "paddleocr"=accurate ~1.6s, "dolphin"=AI ~5s)
+    remote_ocr_engine: Literal["tesseract", "paddleocr"] = "paddleocr"  # Remote OCR engine ("tesseract"=fast ~0.2s, "paddleocr"=accurate ~1.6s)
     remote_ocr_languages: Optional[List[str]] = None  # OCR languages for remote service, e.g., ["kor", "eng"]
+
+    # Dolphin Remote GPU (AI-powered high-accuracy parsing)
+    use_dolphin: bool = False  # Use Dolphin Remote GPU for parsing
+    dolphin_parsing_level: Literal["fast", "normal", "detailed"] = "normal"  # Parsing accuracy level
+    dolphin_max_batch_size: int = 10  # Maximum batch size for processing pages
 
 
 class ParseRequest(BaseModel):

@@ -75,14 +75,10 @@ def delete_document(db: Session, document_id: int) -> bool:
 
 
 def get_document_with_counts(db: Session, document_id: int) -> Optional[dict]:
-    """Get document with aggregated counts of chunks, tables, and pictures."""
+    """Get document with aggregated counts of tables and pictures."""
     document = get_document_by_id(db, document_id)
     if not document:
         return None
-
-    chunk_count = db.query(func.count(db_models.Chunk.id)).filter(
-        db_models.Chunk.document_id == document_id
-    ).scalar()
 
     table_count = db.query(func.count(db_models.Table.id)).filter(
         db_models.Table.document_id == document_id
@@ -94,7 +90,7 @@ def get_document_with_counts(db: Session, document_id: int) -> Optional[dict]:
 
     return {
         "document": document,
-        "chunk_count": chunk_count or 0,
+        "chunk_count": 0,  # Chunk is not used
         "table_count": table_count or 0,
         "picture_count": picture_count or 0,
     }
@@ -107,14 +103,11 @@ def list_documents_with_counts(
     status: Optional[str] = None,
     order_by: str = "last_parsed_at"
 ) -> List[dict]:
-    """List all documents with aggregated counts of chunks, tables, and pictures."""
+    """List all documents with aggregated counts of tables and pictures."""
     query = db.query(
         db_models.Document,
-        func.count(db_models.Chunk.id.distinct()).label('chunk_count'),
         func.count(db_models.Table.id.distinct()).label('table_count'),
         func.count(db_models.Picture.id.distinct()).label('picture_count')
-    ).outerjoin(
-        db_models.Chunk, db_models.Document.id == db_models.Chunk.document_id
     ).outerjoin(
         db_models.Table, db_models.Document.id == db_models.Table.document_id
     ).outerjoin(
@@ -136,51 +129,15 @@ def list_documents_with_counts(
 
     # Convert to list of dicts
     documents_with_counts = []
-    for document, chunk_count, table_count, picture_count in results:
+    for document, table_count, picture_count in results:
         documents_with_counts.append({
             "document": document,
-            "chunk_count": chunk_count or 0,
+            "chunk_count": 0,  # Chunk is not used
             "table_count": table_count or 0,
             "picture_count": picture_count or 0,
         })
 
     return documents_with_counts
-
-
-# ===== Chunk CRUD =====
-
-def create_chunk(db: Session, chunk: schemas.ChunkCreate) -> db_models.Chunk:
-    """Create a new chunk record."""
-    db_chunk = db_models.Chunk(**chunk.model_dump())
-    db.add(db_chunk)
-    db.commit()
-    db.refresh(db_chunk)
-    return db_chunk
-
-
-def create_chunks_bulk(db: Session, chunks: List[schemas.ChunkCreate]) -> List[db_models.Chunk]:
-    """Create multiple chunks in bulk."""
-    db_chunks = [db_models.Chunk(**chunk.model_dump()) for chunk in chunks]
-    db.add_all(db_chunks)
-    db.commit()
-    for chunk in db_chunks:
-        db.refresh(chunk)
-    return db_chunks
-
-
-def get_chunks_by_document_id(db: Session, document_id: int) -> List[db_models.Chunk]:
-    """Get all chunks for a document."""
-    return db.query(db_models.Chunk).filter(
-        db_models.Chunk.document_id == document_id
-    ).order_by(db_models.Chunk.chunk_index).all()
-
-
-def get_chunk_by_chunk_id(db: Session, document_id: int, chunk_id: str) -> Optional[db_models.Chunk]:
-    """Get a specific chunk by its chunk_id."""
-    return db.query(db_models.Chunk).filter(
-        db_models.Chunk.document_id == document_id,
-        db_models.Chunk.chunk_id == chunk_id
-    ).first()
 
 
 # ===== Table CRUD =====
